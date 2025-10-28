@@ -8,9 +8,17 @@
     "dev": "bun run --hot src/index.ts"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@eslint/js": "^9.38.0",
+    "@types/bun": "latest",
+    "eslint": "^9.38.0",
+    "globals": "^16.4.0",
+    "jiti": "^2.6.1",
+    "typescript-eslint": "^8.46.2"
   },
   "peerDependencies": {
     "typescript": "^5"
+  },
+  "dependencies": {
+    "hono": "^4.10.3"
   }
 }
