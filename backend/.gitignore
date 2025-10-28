@@ -35,3 +35,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # bun lock
 bun.lock
+
+# migrations
+better-auth_migrations/
