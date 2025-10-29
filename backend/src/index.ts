@@ -1,6 +1,8 @@
 import { cors } from "hono/cors";
 import { Hono } from "hono";
-import authRouter from "auth/router";
+import authRouter from "@/auth/router";
+import MatchingRouter from "./peer-matching/router";
+import { websocket } from "hono/bun";
 
 const app = new Hono().basePath("api/");
 
@@ -17,6 +19,10 @@ app.use(
 );
 
 app.route("auth/*", authRouter);
+app.route("match/*", MatchingRouter);
 app.get("/", (c) => c.text("hello world"));
 
-export default app;
+export default {
+  fetch: app.fetch,
+  websocket,
+};
