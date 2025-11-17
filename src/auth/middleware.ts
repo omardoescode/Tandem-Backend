@@ -2,7 +2,7 @@ import { createMiddleware } from "hono/factory";
 import { StatusCodes } from "http-status-codes";
 import auth from "./lib";
 import type { Session, User } from "./types";
-import { ErrorResponse } from "utils/responses";
+import { ErrorResponse } from "@/utils/responses";
 
 export const protectedRoute = createMiddleware<{
   Variables: {
