@@ -9,34 +9,40 @@ import {
 import pool from "@/db/pool";
 import interval from "postgres-interval";
 import { DBError } from "@/db/errors";
-import Option from "@/utils/monads/Option";
-import { None, Some } from "@/utils/monads/Option";
-import type { ConnectionState } from "./types";
+import Option, { Some, None } from "@/utils/monads/Option";
 import { AlreadyHavePartner } from "./error";
+import type AppError from "@/utils/error_handling/AppError";
+
+enum ConnStateId {
+  START,
+  MATCHING,
+  SESSION,
+  CHECKIN,
+}
 
 class UserConn {
   public readonly user_id: string;
   private _ws: WSContext;
-  private _status: ConnectionState;
+  private _status: ConnStateId;
   private partner_id: Option<string> = None();
 
   constructor(user_id: string, ws: WSContext) {
     this.user_id = user_id;
     this._ws = ws;
-    this._status = "start";
+    this._status = ConnStateId.START;
   }
 
   public handleMessage(msg: SessionWsResponse) {
     this._ws.send(JSON.stringify(msg));
   }
 
-  public status(): ConnectionState {
+  public status(): ConnStateId {
     return this._status;
   }
 
-  // TODO: Find a better way
-  public updateStatus(to: ConnectionState): boolean {
-    if (to === "peer-matching" && this._status !== "start") return false;
+  public updateStatus(to: ConnStateId): boolean {
+    if (to === ConnStateId.MATCHING && this._status !== ConnStateId.START)
+      return false;
     this._status = to;
     return true;
   }
@@ -56,12 +62,125 @@ class UserConn {
   }
 }
 
+abstract class ConnectionState {
+  protected context: {
+    conn: UserConn;
+    registry: ConnectionRegistry;
+    manager: ConnectionManager;
+  };
+  public abstract readonly id: ConnStateId;
+  constructor(
+    conn: UserConn,
+    registry: ConnectionRegistry,
+    manager: ConnectionManager,
+  ) {
+    this.context = { conn, registry, manager };
+  }
+  public abstract handleMessage(
+    msg: SessionWsMessage,
+  ): Promise<Option<AppError>>;
+}
+
+class StartState extends ConnectionState {
+  public readonly id = ConnStateId.START;
+
+  public async handleMessage(msg: SessionWsMessage): Promise<Option<AppError>> {
+    if (msg.type !== "init_session") return None();
+
+    const conn = this.context.conn;
+    if (!conn.updateStatus(ConnStateId.MATCHING)) return None();
+
+    const match = this.context.manager.peer_matching.match({
+      user_id: conn.user_id,
+      timer_seconds: msg.focus_duration_seconds,
+      tasks: msg.tasks,
+    });
+
+    if (!match) {
+      conn.handleMessage({ type: "matching_pending" });
+      return None();
+    }
+
+    const other_conn_op = this.context.registry.get(match.user_id);
+    assert(other_conn_op.isSome());
+    const other_conn = other_conn_op.unwrap();
+
+    return await this.initSession(
+      conn,
+      msg.tasks,
+      other_conn,
+      match.tasks,
+      match.timer_seconds,
+    );
+  }
+
+  public async initSession(
+    conn1: UserConn,
+    tasks1: string[],
+    conn2: UserConn,
+    tasks2: string[],
+    scheduled_durations_seconds: number,
+  ): Promise<Option<DBError>> {
+    const client = await pool.connect();
+    try {
+      const session = await createSession(client, {
+        scheduledDuration: interval(`${scheduled_durations_seconds} seconds`),
+      });
+      if (!session) return Some(new DBError("Failed creating a session"));
+
+      await Promise.all([
+        createSessionParticipant(client, {
+          sessionId: session.sessionId,
+          userId: conn1.user_id,
+        }),
+        createSessionParticipant(client, {
+          sessionId: session.sessionId,
+          userId: conn2.user_id,
+        }),
+      ]);
+
+      client.query("commit");
+    } finally {
+      client.release();
+    }
+
+    conn1.pair(conn2.user_id);
+    conn2.pair(conn1.user_id);
+
+    conn1.handleMessage({
+      type: "matched",
+      partner_id: conn2.user_id,
+      partner_tasks: tasks2,
+    });
+
+    conn2.handleMessage({
+      type: "matched",
+      partner_id: conn1.user_id,
+      partner_tasks: tasks1,
+    });
+
+    return None();
+  }
+}
+
+class StateFactory {
+  static build(
+    id: ConnStateId,
+    conn: UserConn,
+    reg: ConnectionRegistry,
+    m: ConnectionManager,
+  ): ConnectionState {
+    if (id === ConnStateId.START) return new StartState(conn, reg, m);
+    throw new Error("unimplemented state");
+  }
+}
+
 class ConnectionRegistry {
   private conns: Map<string, UserConn> = new Map();
+
   public add(conn: UserConn): void {
     const user_id = conn.user_id;
     if (this.conns.has(user_id)) {
-      // Gracefully terminate old connection
       const old_conn = this.conns.get(user_id)!;
       old_conn.handleMessage({
         type: "terminated",
@@ -69,7 +188,6 @@ class ConnectionRegistry {
       });
       old_conn.close();
     }
-
     this.conns.set(user_id, conn);
   }
 
@@ -84,17 +202,16 @@ class ConnectionRegistry {
 
 export class ConnectionManager {
   private static _instance: ConnectionManager | null = null;
-  private peer_matching: PeerMatchingService;
+  public peer_matching: PeerMatchingService;
   private registry: ConnectionRegistry;
 
   constructor() {
     this.peer_matching = PeerMatchingService.instance();
     this.registry = new ConnectionRegistry();
   }
+
   static instance(): ConnectionManager {
-    if (!this._instance) {
-      this._instance = new ConnectionManager();
-    }
+    if (!this._instance) this._instance = new ConnectionManager();
     return this._instance;
   }
 
@@ -106,102 +223,24 @@ export class ConnectionManager {
     user_id: string,
     msg: SessionWsMessage,
   ): Promise<Option<DBError>> {
-    if (msg.type === "init_session") {
-      const conn_op = this.registry.get(user_id);
-      assert(conn_op.isSome());
-      const conn = conn_op.unwrap();
+    const conn_op = this.registry.get(user_id);
+    if (conn_op.isNone()) return None();
+    const conn = conn_op.unwrap();
 
-      if (conn.status() !== "start") {
-        conn.handleMessage({
-          type: "error",
-          error: `Invalid state transition. Current status is ${conn.status()}`,
-        });
-        return None();
-      }
-      conn.updateStatus("peer-matching");
-
-      const other = this.peer_matching.match({
-        user_id,
-        timer_seconds: msg.focus_duration_seconds,
-        tasks: msg.tasks,
-      });
-
-      if (!other) {
-        conn.handleMessage({
-          type: "matching_pending",
-        });
-        return None();
-      }
-
-      const other_conn = this.registry.get(other.user_id);
-      assert(other_conn.isSome());
-
-      const res = await this.initSession(
-        conn,
-        msg.tasks,
-        other_conn.unwrap(),
-        other.tasks,
-        other.timer_seconds,
-      );
-      return res;
-    }
-    throw new Error("didn't write code for other cases");
+    const state = StateFactory.build(conn.status(), conn, this.registry, this);
+    return await state.handleMessage(msg);
   }
 
-  private async initSession(
-    conn1: UserConn,
-    tasks1: string[],
-    conn2: UserConn,
-    tasks2: string[],
-    scheduled_durations_seconds: number,
-  ): Promise<Option<DBError>> {
-    const client = await pool.connect();
-    try {
-      const session = await createSession(client, {
-        scheduledDuration: interval(`${scheduled_durations_seconds} seconds`),
-      });
-      if (!session) return Some(new DBError("Failed creating a session"));
-      await Promise.all([
-        createSessionParticipant(client, {
-          sessionId: session.sessionId,
-          userId: conn1.user_id,
-        }),
-        createSessionParticipant(client, {
-          sessionId: session.sessionId,
-          userId: conn2.user_id,
-        }),
-      ]);
-      client.query("commit");
-    } finally {
-      client.release();
-    }
-
-    conn1.pair(conn2.user_id);
-    conn2.pair(conn1.user_id);
-
-    conn1.handleMessage({
-      type: "matched",
-      partner_id: conn2.user_id,
-      partner_tasks: tasks2,
-    });
-    conn2.handleMessage({
-      type: "matched",
-      partner_id: conn1.user_id,
-      partner_tasks: tasks1,
-    });
-
-    return None();
-  }
-  // TODO: Too complex later
   public async handleClose(user_id: string) {
     const conn_op = this.registry.get(user_id);
     if (conn_op.isNone()) return;
+
     const conn = conn_op.unwrap();
-    const partner_id = conn.getPartnerId();
-    if (partner_id.isSome()) {
-      console.log(`removing ${partner_id.unwrap()}`);
-      const partner_conn = this.registry.get(partner_id.unwrap()).unwrap();
-      partner_conn.handleMessage({ type: "other_used_disconnected" });
+    const partner = conn.getPartnerId();
+    if (partner.isSome()) {
+      const p = this.registry.get(partner.unwrap());
+      if (p.isSome())
+        p.unwrap().handleMessage({ type: "other_used_disconnected" });
     }
 
     this.registry.delete(user_id);

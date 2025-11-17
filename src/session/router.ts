@@ -92,6 +92,7 @@ sessionRouter.get(
         if (res.isSome()) throw res.unwrap();
       },
       onClose(event, ws) {
+        assert(user_id);
         console.log(`User ${user_id} disconnected.`);
         ConnectionManager.instance().handleClose(user_id);
       },
