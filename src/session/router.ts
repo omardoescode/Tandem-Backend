@@ -93,6 +93,7 @@ sessionRouter.get(
       },
       onClose(event, ws) {
         console.log(`User ${user_id} disconnected.`);
+        ConnectionManager.instance().handleClose(user_id);
       },
       onError(event, ws) {
         console.error(`WebSocket error for ${user_id}:`, event);

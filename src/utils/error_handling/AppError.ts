@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 import type { StatusCode } from "hono/utils/http-status";
 import { ErrorResponse } from "@/utils/responses";
+import { StatusCodes } from "http-status-codes";
 
 export default class AppError extends Error {
   private status: StatusCode;
@@ -15,16 +16,16 @@ export default class AppError extends Error {
     cause,
   }: {
     message: string;
-    status: StatusCode;
-    isOperational: boolean;
+    status?: StatusCode;
+    isOperational?: boolean;
     details?: unknown;
     cause?: Error;
   }) {
     super(message, {
       cause,
     });
-    this.status = status;
-    this.isOperational = isOperational;
+    this.status = status ?? StatusCodes.INTERNAL_SERVER_ERROR;
+    this.isOperational = isOperational ?? false;
     this.details = details;
 
     if (Error.captureStackTrace) {

@@ -12,11 +12,13 @@ import { DBError } from "@/db/errors";
 import Option from "@/utils/monads/Option";
 import { None, Some } from "@/utils/monads/Option";
 import type { ConnectionState } from "./types";
+import { AlreadyHavePartner } from "./error";
 
 class UserConn {
   public readonly user_id: string;
   private _ws: WSContext;
   private _status: ConnectionState;
+  private partner_id: Option<string> = None();
 
   constructor(user_id: string, ws: WSContext) {
     this.user_id = user_id;
@@ -41,6 +43,16 @@ class UserConn {
 
   public close() {
     this._ws.close();
+  }
+
+  public pair(partner_id: string): Option<AlreadyHavePartner> {
+    if (this.partner_id.isSome()) return Some(new AlreadyHavePartner());
+    this.partner_id = Some(partner_id);
+    return None();
+  }
+
+  public getPartnerId(): Option<string> {
+    return this.partner_id;
   }
 }
 
@@ -102,7 +114,7 @@ export class ConnectionManager {
       if (conn.status() !== "start") {
         conn.handleMessage({
           type: "error",
-          error: `Invalid state transition. Current status is ${conn.status}`,
+          error: `Invalid state transition. Current status is ${conn.status()}`,
         });
         return None();
       }
@@ -115,11 +127,9 @@ export class ConnectionManager {
       });
 
       if (!other) {
-        conn.ws.send(
-          JSON.stringify({
-            type: "matching_pending",
-          } as SessionWsResponse),
-        );
+        conn.handleMessage({
+          type: "matching_pending",
+        });
         return None();
       }
 
@@ -133,7 +143,7 @@ export class ConnectionManager {
         other.tasks,
         other.timer_seconds,
       );
-      if (res.isSome()) return res;
+      return res;
     }
     throw new Error("didn't write code for other cases");
   }
@@ -166,6 +176,9 @@ export class ConnectionManager {
       client.release();
     }
 
+    conn1.pair(conn2.user_id);
+    conn2.pair(conn1.user_id);
+
     conn1.handleMessage({
       type: "matched",
       partner_id: conn2.user_id,
@@ -178,5 +191,19 @@ export class ConnectionManager {
     });
 
     return None();
+  }
+  // TODO: Too complex later
+  public async handleClose(user_id: string) {
+    const conn_op = this.registry.get(user_id);
+    if (conn_op.isNone()) return;
+    const conn = conn_op.unwrap();
+    const partner_id = conn.getPartnerId();
+    if (partner_id.isSome()) {
+      console.log(`removing ${partner_id.unwrap()}`);
+      const partner_conn = this.registry.get(partner_id.unwrap()).unwrap();
+      partner_conn.handleMessage({ type: "other_used_disconnected" });
+    }
+
+    this.registry.delete(user_id);
   }
 }

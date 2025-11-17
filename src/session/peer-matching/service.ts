@@ -1,4 +1,3 @@
-import type { WSContext } from "hono/ws";
 import type { PeerMatchingClient } from "./types";
 
 export default class PeerMatchingService {
