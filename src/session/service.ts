@@ -23,13 +23,13 @@ enum ConnStateId {
 class UserConn {
   public readonly user_id: string;
   private _ws: WSContext;
-  private _status: ConnStateId;
+  private _state: ConnStateId;
   private partner_id: Option<string> = None();
 
   constructor(user_id: string, ws: WSContext) {
     this.user_id = user_id;
     this._ws = ws;
-    this._status = ConnStateId.START;
+    this._state = ConnStateId.START;
   }
 
   public handleMessage(msg: SessionWsResponse) {
@@ -37,13 +37,13 @@ class UserConn {
   }
 
   public status(): ConnStateId {
-    return this._status;
+    return this._state;
   }
 
-  public updateStatus(to: ConnStateId): boolean {
-    if (to === ConnStateId.MATCHING && this._status !== ConnStateId.START)
+  public updateState(to: ConnStateId): boolean {
+    if (to === ConnStateId.MATCHING && this._state !== ConnStateId.START)
       return false;
-    this._status = to;
+    this._state = to;
     return true;
   }
 
@@ -79,6 +79,8 @@ abstract class ConnectionState {
   public abstract handleMessage(
     msg: SessionWsMessage,
   ): Promise<Option<AppError>>;
+
+  public abstract handleClose(): Promise<Option<AppError>>;
 }
 
 class StartState extends ConnectionState {
@@ -88,7 +90,7 @@ class StartState extends ConnectionState {
     if (msg.type !== "init_session") return None();
 
     const conn = this.context.conn;
-    if (!conn.updateStatus(ConnStateId.MATCHING)) return None();
+    if (!conn.updateState(ConnStateId.MATCHING)) return None();
 
     const match = this.context.manager.peer_matching.match({
       user_id: conn.user_id,
@@ -161,6 +163,18 @@ class StartState extends ConnectionState {
 
     return None();
   }
+
+  public override async handleClose(): Promise<Option<AppError>> {
+    const partner = this.context.conn.getPartnerId();
+    if (partner.isSome()) {
+      const p = this.context.registry.get(partner.unwrap());
+      if (p.isSome())
+        p.unwrap().handleMessage({ type: "other_used_disconnected" });
+    }
+
+    this.context.registry.delete(this.context.conn.user_id);
+    return None();
+  }
 }
 
 class StateFactory {
@@ -171,6 +185,7 @@ class StateFactory {
     m: ConnectionManager,
   ): ConnectionState {
     if (id === ConnStateId.START) return new StartState(conn, reg, m);
+    // if (id === ConnStateId.MATCHING) return new MatchingState(conn, reg, m);
     throw new Error("unimplemented state");
   }
 }
@@ -233,16 +248,10 @@ export class ConnectionManager {
 
   public async handleClose(user_id: string) {
     const conn_op = this.registry.get(user_id);
-    if (conn_op.isNone()) return;
-
+    if (conn_op.isNone()) return None();
     const conn = conn_op.unwrap();
-    const partner = conn.getPartnerId();
-    if (partner.isSome()) {
-      const p = this.registry.get(partner.unwrap());
-      if (p.isSome())
-        p.unwrap().handleMessage({ type: "other_used_disconnected" });
-    }
 
-    this.registry.delete(user_id);
+    const state = StateFactory.build(conn.status(), conn, this.registry, this);
+    return await state.handleClose();
   }
 }
