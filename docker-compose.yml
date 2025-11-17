@@ -1,18 +1,20 @@
 services:
   database:
-    image: "postgres:latest"
+    image: "postgres:18"
     ports:
-      - "5432:5432"
-    env_file:
-      - .env
+      - "${POSTGRES_PORT}:${POSTGRES_PORT}"
+    environment:
+      - POSTGRES_USER
+      - POSTGRES_PASSWORD
+      - POSTGRES_DB
     networks:
-      - postgres-network
+      - my-net
     volumes:
-      - ${PWD}/db-data/:/var/lib/postgresql/data/
+      - db-data:/var/lib/postgresql
 
 volumes:
-  redis-data:
+  db-data:
 
 networks:
-  postgres-network:
+  my-net:
     driver: bridge
