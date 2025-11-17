@@ -1,6 +1,6 @@
 import type { Context } from "hono";
 import type { StatusCode } from "hono/utils/http-status";
-import { ErrorResponse } from "utils/responses";
+import { ErrorResponse } from "@/utils/responses";
 
 export default class AppError extends Error {
   private status: StatusCode;

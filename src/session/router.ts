@@ -12,8 +12,8 @@ const sessionRouter = new Hono();
 
 // TODO: Replace with redis or postgres db
 const tickets: Record<string, string> = {
-  // "0": "s5VhePDAxcItlnHlyEMuPwAS9FEm0s2m",
-  // "1": "n0xa5TzYTQ69Bws9iK9jrxdpamBXYPwC",
+  "0": "Q1glnkoN5AgrMbzOsJ1lwwF4TeQkbZX7",
+  "1": "D59Zhqy5SVul8j4DN4W9i47Aq3HdBKWN",
 };
 
 sessionRouter.get(
@@ -50,7 +50,7 @@ sessionRouter.get(
     const user_id = ticket ? tickets[ticket] : null;
 
     // TODO: Keep them for development
-    if (ticket) delete tickets[ticket]; // One-time use
+    // if (ticket) delete tickets[ticket]; // One-time use
 
     return {
       onOpen(evt, ws) {
@@ -89,8 +89,7 @@ sessionRouter.get(
           user_id,
           parsed,
         );
-        ws.send(JSON.stringify(res));
-        if (res.type === "error") ws.close();
+        if (res.isSome()) throw res.unwrap();
       },
       onClose(event, ws) {
         console.log(`User ${user_id} disconnected.`);

@@ -1,7 +1,7 @@
 import env from "@/utils/env";
 import { Pool } from "pg";
 
-const db = new Pool({
+const pool = new Pool({
   host: env.POSTGRES_HOST,
   port: env.POSTGRES_PORT,
   user: env.POSTGRES_USER,
@@ -9,4 +9,4 @@ const db = new Pool({
   database: env.POSTGRES_DB,
 });
 
-export default db;
+export default pool;
