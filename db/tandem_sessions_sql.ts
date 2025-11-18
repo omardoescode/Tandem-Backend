@@ -171,3 +171,29 @@ export async function createCheckInReport(client: Client, args: createCheckInRep
     });
 }
 
+export const checkSessionDoneQuery = `-- name: checkSessionDone :one
+select count(distinct reviewer_id) = 2 done from checkin where session_id = $1`;
+
+export interface checkSessionDoneArgs {
+    sessionId: string;
+}
+
+export interface checkSessionDoneRow {
+    done: string;
+}
+
+export async function checkSessionDone(client: Client, args: checkSessionDoneArgs): Promise<checkSessionDoneRow | null> {
+    const result = await client.query({
+        text: checkSessionDoneQuery,
+        values: [args.sessionId],
+        rowMode: "array"
+    });
+    if (result.rows.length !== 1) {
+        return null;
+    }
+    const row = result.rows[0];
+    return {
+        done: row[0]
+    };
+}
+

@@ -25,6 +25,7 @@ export default class PeerMatchingService {
       return null;
     } else {
       const other = queue[0]!;
+      queue.shift();
       return other;
     }
   }

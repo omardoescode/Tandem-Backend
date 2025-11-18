@@ -18,3 +18,6 @@ update tandem_session set status = 'checkin' where session_id = any($1);
 
 -- name: createCheckInReport :exec
 insert into checkin(session_id, reviewer_id, work_proved, reviewee_id) values ($1, $2, $3, $4);
+
+-- name: checkSessionDone :one
+select count(distinct reviewer_id) = 2 done from checkin where session_id = $1;

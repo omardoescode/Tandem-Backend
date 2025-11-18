@@ -12,6 +12,7 @@ import {
   getCompletedSessionsForCheckIn,
   updateSessionStatusToCheckIn,
   createCheckInReport,
+  checkSessionDone,
 } from "db/tandem_sessions_sql";
 import pool from "@/db/pool";
 import interval from "postgres-interval";
@@ -72,6 +73,10 @@ class UserConn {
 
   public getPartnerId(): Option<string> {
     return this.partner_id;
+  }
+
+  public removePartner() {
+    this.partner_id = None();
   }
 
   public getSessionId(): Option<string> {
@@ -190,7 +195,6 @@ class MatchingState extends ConnectionState {
   }
 
   public override async handleClose(): Promise<Result<boolean, AppError>> {
-    console.log(`Removing ${this.context.conn.user_id} in matching state`);
     this.context.manager.peer_matching.disconnectClient(
       this.context.conn.user_id,
     );
@@ -210,9 +214,9 @@ class SessionState extends ConnectionState {
   public override async handleClose(): Promise<Result<boolean, AppError>> {
     const partner = this.context.conn.getPartnerId();
     if (partner.isSome()) {
-      const p = this.context.registry.get(partner.unwrap());
-      if (p.isSome())
-        p.unwrap().handleMessage({ type: "other_used_disconnected" });
+      const partner_conn = this.context.registry.get(partner.unwrap()).unwrap();
+      partner_conn.handleMessage({ type: "other_used_disconnected" });
+      partner_conn.removePartner();
     }
 
     this.context.registry.delete(this.context.conn.user_id);
@@ -241,6 +245,29 @@ class CheckInState extends ConnectionState {
           reviewerId: user_id,
           workProved: msg.work_proved ? "true" : "false",
         });
+
+        // TODO: Check if all checkIn are submitted
+        const result = await checkSessionDone(client, {
+          sessionId: session_id.unwrap(),
+        });
+
+        if (!result) return Some(new DBError());
+
+        if (result.done) {
+          // Terminate session
+          const other_conn = this.context.registry
+            .get(partner_id.unwrap())
+            .unwrap();
+
+          await Promise.all(
+            [conn, other_conn].map((c) => {
+              c.handleMessage({
+                type: "session_done",
+              });
+              this.context.registry.delete(c.user_id);
+            }),
+          );
+        }
       } finally {
         if (client) client.release();
       }
@@ -288,6 +315,9 @@ class ConnectionRegistry {
   }
 
   public delete(user_id: string): boolean {
+    const exists = this.conns.get(user_id);
+    if (!exists) return false;
+    exists.close();
     return this.conns.delete(user_id);
   }
 }
