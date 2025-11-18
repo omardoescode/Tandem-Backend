@@ -91,10 +91,11 @@ sessionRouter.get(
         );
         if (res.isSome()) throw res.unwrap();
       },
-      onClose(event, ws) {
+      async onClose(event, ws) {
         assert(user_id);
         console.log(`User ${user_id} disconnected.`);
-        ConnectionManager.instance().handleClose(user_id);
+        const res = await ConnectionManager.instance().handleClose(user_id);
+        if (res.isSome()) throw res.unwrap();
       },
       onError(event, ws) {
         console.error(`WebSocket error for ${user_id}:`, event);

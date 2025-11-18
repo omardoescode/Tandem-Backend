@@ -8,17 +8,17 @@ export default abstract class Result<T, E extends Error = Error> {
   abstract map<U>(fn: (value: T) => U): Result<U, E>;
   abstract safeMap<U, F extends Error>(
     fn: (value: T) => U,
-    errFactory: () => F
+    errFactory: () => F,
   ): Result<U, E | F>;
   abstract mapErr<U extends Error>(fn: (err: E) => U): Result<T, U>;
   abstract bind<U>(fn: (value: T) => Result<U, E>): Result<U, E>;
   abstract safeBind<U, F extends Error>(
     fn: (value: T) => Result<U, E>,
-    err: () => F
+    err: () => F,
   ): Result<U, E | F>;
   abstract ensure<F extends Error>(
     predicate: (value: T) => boolean,
-    err: () => F
+    err: () => F,
   ): Result<T, E | F>;
   abstract match<TD, ED>(matcher: {
     ifOk: (value: T) => TD;
@@ -83,7 +83,7 @@ class ok<T, E extends Error> extends Result<T, E> {
   }
   safeMap<U, F extends Error>(
     fn: (value: T) => U,
-    errFactory: () => F
+    errFactory: () => F,
   ): Result<U, F> {
     try {
       return Ok(fn(this.value));
@@ -100,7 +100,7 @@ class ok<T, E extends Error> extends Result<T, E> {
   }
   safeBind<U, F extends Error>(
     fn: (value: T) => Result<U, E>,
-    errFactory: () => F
+    errFactory: () => F,
   ): Result<U, E | F> {
     try {
       return fn(this.value);
@@ -110,7 +110,7 @@ class ok<T, E extends Error> extends Result<T, E> {
   }
   ensure<F extends Error>(
     predicate: (value: T) => boolean,
-    errFactory: () => F
+    errFactory: () => F,
   ): Result<T, F> {
     if (!predicate(this.value)) return new err(errFactory());
     return new ok(this.value);

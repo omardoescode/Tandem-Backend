@@ -12,6 +12,8 @@ import { DBError } from "@/db/errors";
 import Option, { Some, None } from "@/utils/monads/Option";
 import { AlreadyHavePartner } from "./error";
 import type AppError from "@/utils/error_handling/AppError";
+import type Result from "@/utils/monads/Result";
+import { Ok } from "@/utils/monads/Result";
 
 enum ConnStateId {
   START,
@@ -40,11 +42,8 @@ class UserConn {
     return this._state;
   }
 
-  public updateState(to: ConnStateId): boolean {
-    if (to === ConnStateId.MATCHING && this._state !== ConnStateId.START)
-      return false;
+  public updateState(to: ConnStateId): void {
     this._state = to;
-    return true;
   }
 
   public close() {
@@ -80,7 +79,7 @@ abstract class ConnectionState {
     msg: SessionWsMessage,
   ): Promise<Option<AppError>>;
 
-  public abstract handleClose(): Promise<Option<AppError>>;
+  public abstract handleClose(): Promise<Result<boolean, AppError>>;
 }
 
 class StartState extends ConnectionState {
@@ -90,7 +89,7 @@ class StartState extends ConnectionState {
     if (msg.type !== "init_session") return None();
 
     const conn = this.context.conn;
-    if (!conn.updateState(ConnStateId.MATCHING)) return None();
+    conn.updateState(ConnStateId.MATCHING);
 
     const match = this.context.manager.peer_matching.match({
       user_id: conn.user_id,
@@ -164,7 +163,7 @@ class StartState extends ConnectionState {
     return None();
   }
 
-  public override async handleClose(): Promise<Option<AppError>> {
+  public override async handleClose(): Promise<Result<boolean, AppError>> {
     const partner = this.context.conn.getPartnerId();
     if (partner.isSome()) {
       const p = this.context.registry.get(partner.unwrap());
@@ -173,7 +172,7 @@ class StartState extends ConnectionState {
     }
 
     this.context.registry.delete(this.context.conn.user_id);
-    return None();
+    return Ok(false);
   }
 }
 
@@ -246,12 +245,19 @@ export class ConnectionManager {
     return await state.handleMessage(msg);
   }
 
-  public async handleClose(user_id: string) {
+  public async handleClose(user_id: string): Promise<Option<AppError>> {
     const conn_op = this.registry.get(user_id);
     if (conn_op.isNone()) return None();
     const conn = conn_op.unwrap();
 
     const state = StateFactory.build(conn.status(), conn, this.registry, this);
-    return await state.handleClose();
+    const result = await state.handleClose();
+    return result.match({
+      ifOk: (to_remove) => {
+        if (to_remove) this.registry.delete(conn.user_id);
+        return None();
+      },
+      ifErr: (err) => Some(err),
+    });
   }
 }
