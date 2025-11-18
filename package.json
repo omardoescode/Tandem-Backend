@@ -5,7 +5,8 @@
   "private": true,
   "scripts": {
     "start": "bun run src/index.ts",
-    "dev": "bun run --hot src/index.ts"
+    "dev": "bun run --hot src/index.ts",
+    "init_db": "bun run src/workers/init_db.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.38.0",

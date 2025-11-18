@@ -48,6 +48,9 @@ export const SessionWSResponseSchema = z.discriminatedUnion("type", [
     start_time: z.iso.date(),
     scheduled_end_time: z.iso.date(),
   }),
+  z.object({
+    type: z.literal("session_done"),
+  }),
 ]);
 
 export type SessionWsResponse = z.infer<typeof SessionWSResponseSchema>;

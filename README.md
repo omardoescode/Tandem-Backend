@@ -5,9 +5,6 @@
 1. Setup the database
 
 ```sh
-docker compose up
-npx @better-auth/cli@latest migrate --config src/auth/lib.ts -- Run the auth schemas
+docker compose up -d
+bun init_db # or npm run init_db
 ```
-
-
-
