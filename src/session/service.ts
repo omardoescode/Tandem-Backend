@@ -190,15 +190,11 @@ class MatchingState extends ConnectionState {
   }
 
   public override async handleClose(): Promise<Result<boolean, AppError>> {
-    const partner = this.context.conn.getPartnerId();
-    if (partner.isSome()) {
-      const p = this.context.registry.get(partner.unwrap());
-      if (p.isSome())
-        p.unwrap().handleMessage({ type: "other_used_disconnected" });
-    }
-
-    this.context.registry.delete(this.context.conn.user_id);
-    return Ok(false);
+    console.log(`Removing ${this.context.conn.user_id} in matching state`);
+    this.context.manager.peer_matching.disconnectClient(
+      this.context.conn.user_id,
+    );
+    return Ok(true);
   }
 }
 
@@ -210,7 +206,16 @@ class SessionState extends ConnectionState {
   ): Promise<Option<AppError>> {
     throw new Error(`Method not implemented. msg=${msg}`);
   }
+
   public override async handleClose(): Promise<Result<boolean, AppError>> {
+    const partner = this.context.conn.getPartnerId();
+    if (partner.isSome()) {
+      const p = this.context.registry.get(partner.unwrap());
+      if (p.isSome())
+        p.unwrap().handleMessage({ type: "other_used_disconnected" });
+    }
+
+    this.context.registry.delete(this.context.conn.user_id);
     return Ok(false);
   }
 }

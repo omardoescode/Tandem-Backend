@@ -28,4 +28,16 @@ export default class PeerMatchingService {
       return other;
     }
   }
+
+  public disconnectClient(user_id: string): boolean {
+    for (const entry of this.waitingClients) {
+      const queue = entry[1];
+      const idx = queue.findIndex((cl) => cl.user_id == user_id);
+      if (idx != -1) {
+        delete queue[idx];
+        return true;
+      }
+    }
+    return false;
+  }
 }
