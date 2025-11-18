@@ -1,6 +1,6 @@
 create table tandem_session (
   session_id uuid DEFAULT uuidv7() PRIMARY KEY,
-  status varchar default 'running' check (status in ('running', 'finished')),
+  status varchar default 'running' check (status in ('running', 'checkin', 'finished')),
   start_time timestamptz not null default now(),
   scheduled_duration interval not null 
 );

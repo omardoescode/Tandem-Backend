@@ -109,3 +109,65 @@ export async function createSessionTask(client: Client, args: createSessionTaskA
     };
 }
 
+export const getCompletedSessionsForCheckInQuery = `-- name: getCompletedSessionsForCheckIn :many
+select ts.session_id, start_time, scheduled_duration, user_id
+from tandem_session ts join session_participant sp on ts.session_id = sp.session_id
+where start_time + scheduled_duration < now()
+  and ts.status = 'running'`;
+
+export interface getCompletedSessionsForCheckInRow {
+    sessionId: string;
+    startTime: Date;
+    scheduledDuration: IPostgresInterval;
+    userId: string;
+}
+
+export async function getCompletedSessionsForCheckIn(client: Client): Promise<getCompletedSessionsForCheckInRow[]> {
+    const result = await client.query({
+        text: getCompletedSessionsForCheckInQuery,
+        values: [],
+        rowMode: "array"
+    });
+    return result.rows.map(row => {
+        return {
+            sessionId: row[0],
+            startTime: row[1],
+            scheduledDuration: row[2],
+            userId: row[3]
+        };
+    });
+}
+
+export const updateSessionStatusToCheckInQuery = `-- name: updateSessionStatusToCheckIn :exec
+update tandem_session set status = 'checkin' where session_id = any($1)`;
+
+export interface updateSessionStatusToCheckInArgs {
+    sessionId: string[];
+}
+
+export async function updateSessionStatusToCheckIn(client: Client, args: updateSessionStatusToCheckInArgs): Promise<void> {
+    await client.query({
+        text: updateSessionStatusToCheckInQuery,
+        values: [args.sessionId],
+        rowMode: "array"
+    });
+}
+
+export const createCheckInReportQuery = `-- name: createCheckInReport :exec
+insert into checkin(session_id, reviewer_id, work_proved, reviewee_id) values ($1, $2, $3, $4)`;
+
+export interface createCheckInReportArgs {
+    sessionId: string;
+    reviewerId: string;
+    workProved: string;
+    revieweeId: string;
+}
+
+export async function createCheckInReport(client: Client, args: createCheckInReportArgs): Promise<void> {
+    await client.query({
+        text: createCheckInReportQuery,
+        values: [args.sessionId, args.reviewerId, args.workProved, args.revieweeId],
+        rowMode: "array"
+    });
+}
+

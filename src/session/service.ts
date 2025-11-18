@@ -1,10 +1,17 @@
 import type { WSContext } from "hono/ws";
 import PeerMatchingService from "./peer-matching/service";
-import type { SessionWsMessage, SessionWsResponse } from "./validation";
+import type {
+  Duration,
+  SessionWsMessage,
+  SessionWsResponse,
+} from "./validation";
 import assert from "assert";
 import {
   createSession,
   createSessionParticipant,
+  getCompletedSessionsForCheckIn,
+  updateSessionStatusToCheckIn,
+  createCheckInReport,
 } from "db/tandem_sessions_sql";
 import pool from "@/db/pool";
 import interval from "postgres-interval";
@@ -14,12 +21,12 @@ import { AlreadyHavePartner } from "./error";
 import type AppError from "@/utils/error_handling/AppError";
 import type Result from "@/utils/monads/Result";
 import { Ok } from "@/utils/monads/Result";
+import moment from "moment";
 
 enum ConnStateId {
-  START,
-  MATCHING,
-  SESSION,
-  CHECKIN,
+  MATCHING = "MATCHING",
+  SESSION = "SESSION",
+  CHECKIN = "CHECKIN",
 }
 
 class UserConn {
@@ -27,11 +34,12 @@ class UserConn {
   private _ws: WSContext;
   private _state: ConnStateId;
   private partner_id: Option<string> = None();
+  private session_id: Option<string> = None();
 
   constructor(user_id: string, ws: WSContext) {
     this.user_id = user_id;
     this._ws = ws;
-    this._state = ConnStateId.START;
+    this._state = ConnStateId.MATCHING;
   }
 
   public handleMessage(msg: SessionWsResponse) {
@@ -50,14 +58,24 @@ class UserConn {
     this._ws.close();
   }
 
-  public pair(partner_id: string): Option<AlreadyHavePartner> {
-    if (this.partner_id.isSome()) return Some(new AlreadyHavePartner());
+  public pair(
+    session_id: string,
+    partner_id: string,
+  ): Option<AlreadyHavePartner> {
+    // TODO: handle the return type of this, left unhandled
+    if (this.session_id.isSome()) return Some(new AlreadyHavePartner()); // TODO: Fix this error, it's wrong for now
+    this.session_id = Some(session_id);
     this.partner_id = Some(partner_id);
+    this.updateState(ConnStateId.SESSION);
     return None();
   }
 
   public getPartnerId(): Option<string> {
     return this.partner_id;
+  }
+
+  public getSessionId(): Option<string> {
+    return this.session_id;
   }
 }
 
@@ -82,8 +100,8 @@ abstract class ConnectionState {
   public abstract handleClose(): Promise<Result<boolean, AppError>>;
 }
 
-class StartState extends ConnectionState {
-  public readonly id = ConnStateId.START;
+class MatchingState extends ConnectionState {
+  public readonly id = ConnStateId.MATCHING;
 
   public async handleMessage(msg: SessionWsMessage): Promise<Option<AppError>> {
     if (msg.type !== "init_session") return None();
@@ -93,7 +111,7 @@ class StartState extends ConnectionState {
 
     const match = this.context.manager.peer_matching.match({
       user_id: conn.user_id,
-      timer_seconds: msg.focus_duration_seconds,
+      duration: msg.focus_duration,
       tasks: msg.tasks,
     });
 
@@ -111,7 +129,7 @@ class StartState extends ConnectionState {
       msg.tasks,
       other_conn,
       match.tasks,
-      match.timer_seconds,
+      match.duration,
     );
   }
 
@@ -120,12 +138,12 @@ class StartState extends ConnectionState {
     tasks1: string[],
     conn2: UserConn,
     tasks2: string[],
-    scheduled_durations_seconds: number,
+    session_duration: Duration,
   ): Promise<Option<DBError>> {
     const client = await pool.connect();
     try {
       const session = await createSession(client, {
-        scheduledDuration: interval(`${scheduled_durations_seconds} seconds`),
+        scheduledDuration: interval(session_duration),
       });
       if (!session) return Some(new DBError("Failed creating a session"));
 
@@ -140,25 +158,33 @@ class StartState extends ConnectionState {
         }),
       ]);
 
+      conn1.pair(session.sessionId, conn2.user_id);
+      conn2.pair(session.sessionId, conn1.user_id);
+
+      const start_time = moment().toISOString();
+      const scheduled_end_time = moment(start_time)
+        .add(moment.duration(session_duration))
+        .toISOString();
+      conn1.handleMessage({
+        type: "matched",
+        partner_id: conn2.user_id,
+        partner_tasks: tasks2,
+        start_time,
+        scheduled_end_time,
+      });
+
+      conn2.handleMessage({
+        type: "matched",
+        partner_id: conn1.user_id,
+        partner_tasks: tasks1,
+        start_time,
+        scheduled_end_time,
+      });
+
       client.query("commit");
     } finally {
       client.release();
     }
-
-    conn1.pair(conn2.user_id);
-    conn2.pair(conn1.user_id);
-
-    conn1.handleMessage({
-      type: "matched",
-      partner_id: conn2.user_id,
-      partner_tasks: tasks2,
-    });
-
-    conn2.handleMessage({
-      type: "matched",
-      partner_id: conn1.user_id,
-      partner_tasks: tasks1,
-    });
 
     return None();
   }
@@ -176,6 +202,51 @@ class StartState extends ConnectionState {
   }
 }
 
+class SessionState extends ConnectionState {
+  public override id: ConnStateId = ConnStateId.SESSION;
+
+  public override handleMessage(
+    msg: SessionWsMessage,
+  ): Promise<Option<AppError>> {
+    throw new Error(`Method not implemented. msg=${msg}`);
+  }
+  public override async handleClose(): Promise<Result<boolean, AppError>> {
+    return Ok(false);
+  }
+}
+
+class CheckInState extends ConnectionState {
+  public override id: ConnStateId = ConnStateId.SESSION;
+
+  public override async handleMessage(
+    msg: SessionWsMessage,
+  ): Promise<Option<AppError>> {
+    if (msg.type === "checkin_report") {
+      let client = null;
+      try {
+        client = await pool.connect();
+        const conn = this.context.conn;
+        const user_id = conn.user_id;
+        const session_id = conn.getSessionId();
+        const partner_id = conn.getPartnerId();
+        assert(session_id.isSome() && partner_id.isSome());
+        await createCheckInReport(client, {
+          sessionId: session_id.unwrap(),
+          revieweeId: partner_id.unwrap(),
+          reviewerId: user_id,
+          workProved: msg.work_proved ? "true" : "false",
+        });
+      } finally {
+        if (client) client.release();
+      }
+    }
+    return None();
+  }
+  public override async handleClose(): Promise<Result<boolean, AppError>> {
+    return Ok(true);
+  }
+}
+
 class StateFactory {
   static build(
     id: ConnStateId,
@@ -183,8 +254,10 @@ class StateFactory {
     reg: ConnectionRegistry,
     m: ConnectionManager,
   ): ConnectionState {
-    if (id === ConnStateId.START) return new StartState(conn, reg, m);
-    // if (id === ConnStateId.MATCHING) return new MatchingState(conn, reg, m);
+    console.log(`Building state ${id} for user_id=${conn.user_id}`);
+    if (id === ConnStateId.MATCHING) return new MatchingState(conn, reg, m);
+    if (id === ConnStateId.SESSION) return new SessionState(conn, reg, m);
+    if (id === ConnStateId.CHECKIN) return new CheckInState(conn, reg, m);
     throw new Error("unimplemented state");
   }
 }
@@ -225,7 +298,11 @@ export class ConnectionManager {
   }
 
   static instance(): ConnectionManager {
-    if (!this._instance) this._instance = new ConnectionManager();
+    if (!this._instance) {
+      this._instance = new ConnectionManager();
+      console.log("iniialized?");
+      this._instance.checkCompletedSessions();
+    }
     return this._instance;
   }
 
@@ -259,5 +336,48 @@ export class ConnectionManager {
       },
       ifErr: (err) => Some(err),
     });
+  }
+
+  // I believe it's fine to use polling here, given it's almost the case there will be many sessions done at the same time, if many users use this of course
+  private async checkCompletedSessions() {
+    console.log("starting checking completed sessions");
+    while (true) {
+      let client = null;
+      try {
+        client = await pool.connect();
+        const sessions = await getCompletedSessionsForCheckIn(client);
+        const now = moment();
+        const CHECK_IN_MINUTES = 2;
+        console.log(sessions.map((x) => x.sessionId));
+
+        if (sessions.length !== 0) {
+          sessions.forEach((x) => {
+            const conn_op = this.registry.get(x.userId);
+            if (conn_op.isNone()) return false;
+            const conn = conn_op.unwrap();
+            conn.updateState(ConnStateId.CHECKIN);
+            conn.handleMessage({
+              type: "checkin_start",
+              start_time: now.toISOString(),
+              scheduled_end_time: now
+                .clone()
+                .add(CHECK_IN_MINUTES)
+                .toISOString(),
+            });
+          });
+          await updateSessionStatusToCheckIn(client, {
+            sessionId: sessions.map((x) => x.sessionId),
+          });
+          client.query("commit");
+        }
+      } catch (err) {
+        console.error("Error checking sessions:", err);
+      } finally {
+        if (client) client.release();
+      }
+
+      // wait 0.5 second before next iteration
+      await new Promise((r) => setTimeout(r, 500));
+    }
   }
 }

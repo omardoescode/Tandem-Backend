@@ -1,5 +1,7 @@
+import type { Duration } from "../validation";
+
 export type PeerMatchingClient = {
   user_id: string;
-  timer_seconds: number;
+  duration: Duration;
   tasks: string[];
 };

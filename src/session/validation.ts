@@ -1,10 +1,21 @@
 import z from "zod";
 
+const hhmmssRegex = /^([0-1]\d|2[0-3]):([0-5]\d):([0-5]\d)$/;
+export const DurationSchema = z
+  .string()
+  .regex(hhmmssRegex, "Invalid time format HH:MM:SS");
+
+export type Duration = z.infer<typeof DurationSchema>;
+
 export const SessionWSMessageSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("init_session"),
     tasks: z.array(z.string().nonempty()).min(1),
-    focus_duration_seconds: z.number().int().min(1),
+    focus_duration: DurationSchema,
+  }),
+  z.object({
+    type: z.literal("checkin_report"),
+    work_proved: z.boolean(),
   }),
 ]);
 
@@ -29,6 +40,13 @@ export const SessionWSResponseSchema = z.discriminatedUnion("type", [
     type: z.literal("matched"),
     partner_id: z.string().nonempty(),
     partner_tasks: z.array(z.string().nonempty()).min(1),
+    start_time: z.iso.date(),
+    scheduled_end_time: z.iso.date(),
+  }),
+  z.object({
+    type: z.literal("checkin_start"),
+    start_time: z.iso.date(),
+    scheduled_end_time: z.iso.date(),
   }),
 ]);
 
