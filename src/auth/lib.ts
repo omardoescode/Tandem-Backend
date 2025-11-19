@@ -7,6 +7,7 @@ const auth = betterAuth({
     enabled: true,
   },
   database: db,
+  trustedOrigins: ["http://localhost:5000"],
   plugins: [openAPI()],
 });
 
