@@ -53,6 +53,10 @@ export const SessionWSResponseSchema = z.discriminatedUnion("type", [
     scheduled_end_time: z.iso.date(),
   }),
   z.object({
+    type: z.literal("checkin_report_sent"),
+    work_proved: z.boolean(),
+  }),
+  z.object({
     type: z.literal("checkin_partner_message"),
     content: z.string().nonempty(),
   }),

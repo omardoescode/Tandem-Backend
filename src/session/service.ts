@@ -218,6 +218,7 @@ class SessionState extends ConnectionState {
       const partner_conn = this.context.registry.get(partner.unwrap()).unwrap();
       partner_conn.handleMessage({ type: "other_used_disconnected" });
       partner_conn.removePartner();
+      this.context.registry.delete(partner_conn.user_id);
     }
 
     this.context.registry.delete(this.context.conn.user_id);
@@ -245,6 +246,14 @@ class CheckInState extends ConnectionState {
           revieweeId: partner_id.unwrap(),
           reviewerId: user_id,
           workProved: msg.work_proved ? "true" : "false",
+        });
+
+        const partner_conn = this.context.registry
+          .get(partner_id.unwrap())
+          .unwrap();
+        partner_conn.handleMessage({
+          type: "checkin_report_sent",
+          work_proved: msg.work_proved,
         });
 
         // TODO: Check if all checkIn are submitted
