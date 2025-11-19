@@ -162,6 +162,7 @@ class MatchingState extends ConnectionState {
           userId: conn2.user_id,
         }),
       ]);
+      // TODO: Create the task in database
 
       conn1.pair(session.sessionId, conn2.user_id);
       conn2.pair(session.sessionId, conn1.user_id);
@@ -271,6 +272,16 @@ class CheckInState extends ConnectionState {
       } finally {
         if (client) client.release();
       }
+    } else if (msg.type == "checkin_message") {
+      // TODO: create a checkin message in database (create the schema for it)
+      const conn = this.context.conn;
+      const partner_conn = this.context.registry
+        .get(conn.getPartnerId().unwrap())
+        .unwrap(); // TODO: Handle these unwraps
+      partner_conn.handleMessage({
+        type: "checkin_partner_message",
+        content: msg.content,
+      });
     }
     return None();
   }

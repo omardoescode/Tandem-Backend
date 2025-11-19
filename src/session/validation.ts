@@ -17,6 +17,10 @@ export const SessionWSMessageSchema = z.discriminatedUnion("type", [
     type: z.literal("checkin_report"),
     work_proved: z.boolean(),
   }),
+  z.object({
+    type: z.literal("checkin_message"),
+    content: z.string().nonempty(),
+  }),
 ]);
 
 export type SessionWsMessage = z.infer<typeof SessionWSMessageSchema>;
@@ -47,6 +51,10 @@ export const SessionWSResponseSchema = z.discriminatedUnion("type", [
     type: z.literal("checkin_start"),
     start_time: z.iso.date(),
     scheduled_end_time: z.iso.date(),
+  }),
+  z.object({
+    type: z.literal("checkin_partner_message"),
+    content: z.string().nonempty(),
   }),
   z.object({
     type: z.literal("session_done"),
