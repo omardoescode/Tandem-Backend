@@ -63,12 +63,15 @@ class UserConn {
     session_id: string,
     partner_id: string,
   ): Option<AlreadyHavePartner> {
-    // TODO: handle the return type of this, left unhandled
-    if (this.session_id.isSome()) return Some(new AlreadyHavePartner()); // TODO: Fix this error, it's wrong for now
-    this.session_id = Some(session_id);
-    this.partner_id = Some(partner_id);
-    this.updateState(ConnStateId.SESSION);
-    return None();
+    return this.session_id.match({
+      ifSome: () => Some(new AlreadyHavePartner()),
+      ifNone: () => {
+        this.session_id = Some(session_id);
+        this.partner_id = Some(partner_id);
+        this.updateState(ConnStateId.SESSION);
+        return None();
+      },
+    });
   }
 
   public getPartnerId(): Option<string> {
@@ -214,12 +217,12 @@ class SessionState extends ConnectionState {
 
   public override async handleClose(): Promise<Result<boolean, AppError>> {
     const partner = this.context.conn.getPartnerId();
-    if (partner.isSome()) {
-      const partner_conn = this.context.registry.get(partner.unwrap()).unwrap();
+    partner.tap((p) => {
+      const partner_conn = this.context.registry.get(p).unwrap();
       partner_conn.handleMessage({ type: "other_used_disconnected" });
       partner_conn.removePartner();
       this.context.registry.delete(partner_conn.user_id);
-    }
+    });
 
     this.context.registry.delete(this.context.conn.user_id);
     return Ok(false);

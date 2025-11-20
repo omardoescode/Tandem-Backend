@@ -27,7 +27,7 @@ export default abstract class Result<T, E extends Error = Error> {
   abstract orElse(defaultValue: T): Result<T, E>;
   abstract tap(matcher: {
     ifOk?: (value: T) => void;
-    ifErr: (error: E) => void;
+    ifErr?: (error: E) => void;
   }): Result<T, E>;
 
   static from<T>(fn: () => T): Result<T> {

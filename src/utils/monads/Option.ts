@@ -5,7 +5,7 @@ export default abstract class Option<T> {
   abstract bind<D>(fn: (value: T) => Option<D>): Option<D>;
   abstract orElse(value: T): Option<T>;
   abstract ensure(predicate: (value: T) => boolean): Option<T>;
-  abstract match<SD, ND>(matcher: {
+  abstract match<SD, ND = SD>(matcher: {
     ifSome: (value: T) => SD;
     ifNone: () => ND;
   }): SD | ND;
