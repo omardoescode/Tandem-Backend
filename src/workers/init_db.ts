@@ -24,7 +24,9 @@ try {
 
     for (const stmt of statements) {
       try {
+        console.log(`Running ${stmt}`);
         await client.query(stmt);
+        console.log(`Sucessfully executed`);
       } catch (err) {
         if (err instanceof Error)
           console.error("ERROR running statement:", err.message);
