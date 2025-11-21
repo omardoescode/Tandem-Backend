@@ -17,15 +17,14 @@ import {
   toggleSessionTask,
   abortSession,
 } from "db/tandem_sessions_sql";
-import pool from "@/db/pool";
 import interval from "postgres-interval";
 import { DBError } from "@/db/errors";
 import Option, { Some, None } from "@/utils/monads/Option";
 import { AlreadyHavePartner } from "./error";
 import type AppError from "@/utils/error_handling/AppError";
-import type Result from "@/utils/monads/Result";
-import { Ok } from "@/utils/monads/Result";
+import Result, { Ok } from "@/utils/monads/Result";
 import moment from "moment";
+import { withClient } from "@/db/helpers";
 
 enum ConnStateId {
   MATCHING = "MATCHING",
@@ -149,13 +148,18 @@ class MatchingState extends ConnectionState {
         assert(other_conn_op.isSome());
         const other_conn = other_conn_op.unwrap();
 
-        return await this.initSession(
+        const db_result = await this.initSession(
           conn,
           msg.tasks,
           other_conn,
           client.tasks,
           client.duration,
         );
+
+        return db_result.match({
+          ifOk: () => None(),
+          ifErr: (err) => Some(err),
+        });
       },
     });
   }
@@ -166,13 +170,12 @@ class MatchingState extends ConnectionState {
     conn2: UserConn,
     tasks2: string[],
     session_duration: Duration,
-  ): Promise<Option<DBError>> {
-    const client = await pool.connect();
-    try {
+  ): Promise<Result<void, DBError>> {
+    return withClient(async (client) => {
       const session = await createSession(client, {
         scheduledDuration: interval(session_duration),
       });
-      if (!session) return Some(new DBError("Failed creating a session"));
+      if (!session) throw new DBError("Failed creating a session");
 
       // TODO: Handle the removal of users (in case it happens in dev or prod?)
       const [, , tasks1_res, tasks2_res] = await Promise.all([
@@ -218,8 +221,8 @@ class MatchingState extends ConnectionState {
         tasks: tasks1_res
           .filter((task) => !!task)
           .map((x) => ({
-            title: x.title,
-            task_id: x.taskId,
+            title: x!.title,
+            task_id: x!.taskId,
           })),
         start_time,
         scheduled_end_time,
@@ -232,19 +235,13 @@ class MatchingState extends ConnectionState {
         tasks: tasks2_res
           .filter((task) => !!task)
           .map((x) => ({
-            title: x.title,
-            task_id: x.taskId,
+            title: x!.title,
+            task_id: x!.taskId,
           })),
         start_time,
         scheduled_end_time,
       });
-
-      client.query("commit");
-    } finally {
-      client.release();
-    }
-
-    return None();
+    });
   }
 
   public override async handleClose(): Promise<Result<boolean, AppError>> {
@@ -262,21 +259,21 @@ class SessionState extends ConnectionState {
     msg: SessionWsMessage,
   ): Promise<Option<AppError>> {
     if (msg.type == "toggle_task") {
-      let client = null;
-      try {
-        client = await pool.connect();
+      const db_result = await withClient(async (client) => {
         await toggleSessionTask(client, {
           taskId: msg.task_id,
           userId: this.context.conn.user_id,
           isComplete: msg.is_complete ? "true" : "false",
         });
-        client.query("commit");
-      } catch (err) {
-        console.error(err);
-        if (client) client.query("rollback");
-      } finally {
-        if (client) client.release();
-      }
+      });
+
+      return db_result.match({
+        ifOk: () => None(),
+        ifErr: (err) => {
+          console.error(err);
+          return Some(err);
+        },
+      });
     }
     return None();
   }
@@ -302,38 +299,36 @@ class SessionState extends ConnectionState {
 
   private async removeSession() {
     this.context.conn.getSessionId().tap(async (session_id) => {
-      let client = null;
-      try {
-        client = await pool.connect();
+      const db_result = await withClient(async (client) => {
         await abortSession(client, {
           sessionId: [session_id],
         });
-      } finally {
-        if (client) client.release();
+      });
+
+      if (db_result.isErr()) {
+        console.error("Failed to abort session:", db_result.unwrapErr());
       }
     });
   }
 }
 
 class CheckInState extends ConnectionState {
-  public override id: ConnStateId = ConnStateId.SESSION;
+  public override id: ConnStateId = ConnStateId.CHECKIN;
 
   public override async handleMessage(
     msg: SessionWsMessage,
   ): Promise<Option<AppError>> {
     if (msg.type === "checkin_report") {
-      let client = null;
-      try {
-        client = await pool.connect();
+      const db_result = await withClient(async (client) => {
         const conn = this.context.conn;
         const user_id = conn.user_id;
-        const session_id = conn.getSessionId();
+        const session_id = conn.getSessionId().unwrap();
         const partner_conn = this.context.registry
           .get(msg.reviewee_id)
           .unwrap();
 
         await createCheckInReport(client, {
-          sessionId: session_id.unwrap(),
+          sessionId: session_id,
           revieweeId: msg.reviewee_id,
           reviewerId: user_id,
           workProved: msg.work_proved ? "true" : "false",
@@ -346,10 +341,10 @@ class CheckInState extends ConnectionState {
 
         // NOTE: This method will need to change later for private sessions, where we can have more than one user
         const result = await checkSessionDone(client, {
-          sessionId: session_id.unwrap(),
+          sessionId: session_id,
         });
 
-        if (!result) return Some(new DBError());
+        if (!result) throw new DBError();
 
         if (result.done) {
           // Terminate session
@@ -366,9 +361,8 @@ class CheckInState extends ConnectionState {
             }),
           );
         }
-      } finally {
-        if (client) client.release();
-      }
+      });
+      return db_result.isErr() ? Some(db_result.unwrapErr()) : None();
     } else if (msg.type == "checkin_message") {
       // TODO: create a checkin message in database (create the schema for it)
       const conn = this.context.conn;
@@ -488,9 +482,7 @@ export class ConnectionManager {
   private async checkCompletedSessions() {
     console.log("starting checking completed sessions");
     while (true) {
-      let client = null;
-      try {
-        client = await pool.connect();
+      const db_result = await withClient(async (client) => {
         const sessions = await getCompletedSessionsForCheckIn(client);
         const now = moment();
         const CHECK_IN_MINUTES = 2;
@@ -514,12 +506,11 @@ export class ConnectionManager {
           await updateSessionStatusToCheckIn(client, {
             sessionId: sessions.map((x) => x.sessionId),
           });
-          client.query("commit");
         }
-      } catch (err) {
-        console.error("Error checking sessions:", err);
-      } finally {
-        if (client) client.release();
+      });
+
+      if (db_result.isErr()) {
+        console.error("Error checking sessions:", db_result.unwrapErr());
       }
 
       // wait 0.5 second before next iteration
