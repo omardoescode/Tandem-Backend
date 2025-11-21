@@ -7,6 +7,9 @@ insert into session_participant(session_id, user_id) values ($1, $2) returning *
 -- name: createSessionTask :one
 insert into session_task(session_id, user_id, title) values ($1, $2, $3) returning *;
 
+-- name: toggleSessionTask :exec
+update session_task set is_complete = $2 where task_id = $1 and user_id = $3;
+
 -- name: getCompletedSessionsForCheckIn :many
 select ts.session_id, start_time, scheduled_duration, user_id
 from tandem_session ts join session_participant sp on ts.session_id = sp.session_id

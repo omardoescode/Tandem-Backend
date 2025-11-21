@@ -14,6 +14,11 @@ export const SessionWSMessageSchema = z.discriminatedUnion("type", [
     focus_duration: DurationSchema,
   }),
   z.object({
+    type: z.literal("toggle_task"),
+    task_id: z.string().nonempty(),
+    is_complete: z.boolean(),
+  }),
+  z.object({
     type: z.literal("checkin_report"),
     work_proved: z.boolean(),
   }),
@@ -44,6 +49,12 @@ export const SessionWSResponseSchema = z.discriminatedUnion("type", [
     type: z.literal("matched"),
     partner_id: z.string().nonempty(),
     partner_tasks: z.array(z.string().nonempty()).min(1),
+    tasks: z.array(
+      z.object({
+        title: z.string().nonempty(),
+        task_id: z.string().nonempty(),
+      }),
+    ),
     start_time: z.iso.date(),
     scheduled_end_time: z.iso.date(),
   }),

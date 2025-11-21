@@ -74,7 +74,7 @@ export async function createSessionParticipant(client: Client, args: createSessi
 }
 
 export const createSessionTaskQuery = `-- name: createSessionTask :one
-insert into session_task(session_id, user_id, title) values ($1, $2, $3) returning session_id, user_id, title, is_complete, created_at`;
+insert into session_task(session_id, user_id, title) values ($1, $2, $3) returning task_id, session_id, user_id, title, is_complete, created_at`;
 
 export interface createSessionTaskArgs {
     sessionId: string;
@@ -83,6 +83,7 @@ export interface createSessionTaskArgs {
 }
 
 export interface createSessionTaskRow {
+    taskId: string;
     sessionId: string;
     userId: string;
     title: string;
@@ -101,12 +102,30 @@ export async function createSessionTask(client: Client, args: createSessionTaskA
     }
     const row = result.rows[0];
     return {
-        sessionId: row[0],
-        userId: row[1],
-        title: row[2],
-        isComplete: row[3],
-        createdAt: row[4]
+        taskId: row[0],
+        sessionId: row[1],
+        userId: row[2],
+        title: row[3],
+        isComplete: row[4],
+        createdAt: row[5]
     };
+}
+
+export const toggleSessionTaskQuery = `-- name: toggleSessionTask :exec
+update session_task set is_complete = $2 where task_id = $1 and user_id = $3`;
+
+export interface toggleSessionTaskArgs {
+    taskId: string;
+    isComplete: string | null;
+    userId: string;
+}
+
+export async function toggleSessionTask(client: Client, args: toggleSessionTaskArgs): Promise<void> {
+    await client.query({
+        text: toggleSessionTaskQuery,
+        values: [args.taskId, args.isComplete, args.userId],
+        rowMode: "array"
+    });
 }
 
 export const getCompletedSessionsForCheckInQuery = `-- name: getCompletedSessionsForCheckIn :many

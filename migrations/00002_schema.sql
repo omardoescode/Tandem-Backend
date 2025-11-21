@@ -1,5 +1,5 @@
 create table tandem_session (
-  session_id uuid DEFAULT uuidv7() PRIMARY KEY,
+  session_id uuid default uuidv7() primary key,
   status varchar default 'running' check (status in ('running', 'checkin', 'finished')),
   start_time timestamptz not null default now(),
   scheduled_duration interval not null 
@@ -15,6 +15,7 @@ create table session_participant (
 ); 
 
 create table session_task (
+  task_id uuid DEFAULT uuidv7() primary key,
   session_id uuid not null references tandem_session(session_id),
   user_id text not null references "user"(id) on delete cascade,
   title varchar(500) not null,

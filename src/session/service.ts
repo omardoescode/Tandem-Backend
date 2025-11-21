@@ -13,6 +13,8 @@ import {
   updateSessionStatusToCheckIn,
   createCheckInReport,
   checkSessionDone,
+  createSessionTask,
+  toggleSessionTask,
 } from "db/tandem_sessions_sql";
 import pool from "@/db/pool";
 import interval from "postgres-interval";
@@ -23,6 +25,7 @@ import type AppError from "@/utils/error_handling/AppError";
 import type Result from "@/utils/monads/Result";
 import { Ok } from "@/utils/monads/Result";
 import moment from "moment";
+import { task } from "better-auth/client";
 
 enum ConnStateId {
   MATCHING = "MATCHING",
@@ -155,7 +158,7 @@ class MatchingState extends ConnectionState {
       });
       if (!session) return Some(new DBError("Failed creating a session"));
 
-      await Promise.all([
+      const [, , tasks1_res, tasks2_res] = await Promise.all([
         createSessionParticipant(client, {
           sessionId: session.sessionId,
           userId: conn1.user_id,
@@ -164,8 +167,25 @@ class MatchingState extends ConnectionState {
           sessionId: session.sessionId,
           userId: conn2.user_id,
         }),
+        Promise.all(
+          tasks1.map((task) =>
+            createSessionTask(client, {
+              sessionId: session.sessionId,
+              userId: conn1.user_id,
+              title: task,
+            }),
+          ),
+        ),
+        Promise.all(
+          tasks2.map((task) =>
+            createSessionTask(client, {
+              sessionId: session.sessionId,
+              userId: conn2.user_id,
+              title: task,
+            }),
+          ),
+        ),
       ]);
-      // TODO: Create the task in database
 
       conn1.pair(session.sessionId, conn2.user_id);
       conn2.pair(session.sessionId, conn1.user_id);
@@ -178,6 +198,12 @@ class MatchingState extends ConnectionState {
         type: "matched",
         partner_id: conn2.user_id,
         partner_tasks: tasks2,
+        tasks: tasks1_res
+          .filter((task) => !!task)
+          .map((x) => ({
+            title: x.title,
+            task_id: x.taskId,
+          })),
         start_time,
         scheduled_end_time,
       });
@@ -186,6 +212,12 @@ class MatchingState extends ConnectionState {
         type: "matched",
         partner_id: conn1.user_id,
         partner_tasks: tasks1,
+        tasks: tasks2_res
+          .filter((task) => !!task)
+          .map((x) => ({
+            title: x.title,
+            task_id: x.taskId,
+          })),
         start_time,
         scheduled_end_time,
       });
@@ -209,10 +241,27 @@ class MatchingState extends ConnectionState {
 class SessionState extends ConnectionState {
   public override id: ConnStateId = ConnStateId.SESSION;
 
-  public override handleMessage(
+  public override async handleMessage(
     msg: SessionWsMessage,
   ): Promise<Option<AppError>> {
-    throw new Error(`Method not implemented. msg=${msg}`);
+    if (msg.type == "toggle_task") {
+      let client = null;
+      try {
+        client = await pool.connect();
+        await toggleSessionTask(client, {
+          taskId: msg.task_id,
+          userId: this.context.conn.user_id,
+          isComplete: msg.is_complete ? "true" : "false",
+        });
+        client.query("commit");
+      } catch (err) {
+        console.error(err);
+        if (client) client.query("rollback");
+      } finally {
+        if (client) client.release();
+      }
+    }
+    return None();
   }
 
   public override async handleClose(): Promise<Result<boolean, AppError>> {
