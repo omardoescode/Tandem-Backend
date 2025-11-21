@@ -11,9 +11,10 @@ import { ConnectionManager } from "./service";
 const sessionRouter = new Hono();
 
 // TODO: Replace with redis or postgres db
+// NOTE: These are just random stuff for development on my machine
 const tickets: Record<string, string> = {
-  "0": "Q1glnkoN5AgrMbzOsJ1lwwF4TeQkbZX7",
-  "1": "D59Zhqy5SVul8j4DN4W9i47Aq3HdBKWN",
+  "0": "WOQjTlaEsqtgGE17v6RTXe8lwPJUNzpB",
+  "1": "k0ESWZ5UjfCu3mBshWYdJtxUx3jWYpqu",
 };
 
 sessionRouter.get(
@@ -71,8 +72,7 @@ sessionRouter.get(
         try {
           const data = JSON.parse(event.data.toString());
           parsed = SessionWSMessageSchema.parse(data);
-        } catch (err) {
-          console.log(err);
+        } catch (_) {
           ws.send(
             JSON.stringify({
               type: "error",

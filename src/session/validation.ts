@@ -21,6 +21,7 @@ export const SessionWSMessageSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("checkin_report"),
     work_proved: z.boolean(),
+    reviewee_id: z.string().nonempty(),
   }),
   z.object({
     type: z.literal("checkin_message"),

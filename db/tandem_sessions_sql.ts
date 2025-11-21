@@ -172,6 +172,21 @@ export async function updateSessionStatusToCheckIn(client: Client, args: updateS
     });
 }
 
+export const abortSessionQuery = `-- name: abortSession :exec
+update tandem_session set status = 'disconnected' where session_id = any($1)`;
+
+export interface abortSessionArgs {
+    sessionId: string[];
+}
+
+export async function abortSession(client: Client, args: abortSessionArgs): Promise<void> {
+    await client.query({
+        text: abortSessionQuery,
+        values: [args.sessionId],
+        rowMode: "array"
+    });
+}
+
 export const createCheckInReportQuery = `-- name: createCheckInReport :exec
 insert into checkin(session_id, reviewer_id, work_proved, reviewee_id) values ($1, $2, $3, $4)`;
 

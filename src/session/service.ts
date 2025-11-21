@@ -15,6 +15,7 @@ import {
   checkSessionDone,
   createSessionTask,
   toggleSessionTask,
+  abortSession,
 } from "db/tandem_sessions_sql";
 import pool from "@/db/pool";
 import interval from "postgres-interval";
@@ -25,7 +26,6 @@ import type AppError from "@/utils/error_handling/AppError";
 import type Result from "@/utils/monads/Result";
 import { Ok } from "@/utils/monads/Result";
 import moment from "moment";
-import { task } from "better-auth/client";
 
 enum ConnStateId {
   MATCHING = "MATCHING",
@@ -37,8 +37,10 @@ class UserConn {
   public readonly user_id: string;
   private _ws: WSContext;
   private _state: ConnStateId;
-  private partner_id: Option<string> = None();
-  private session_id: Option<string> = None();
+  private session_metadata: Option<{
+    session_id: string;
+    partners_ids: string[];
+  }> = None();
 
   constructor(user_id: string, ws: WSContext) {
     this.user_id = user_id;
@@ -64,29 +66,40 @@ class UserConn {
 
   public pair(
     session_id: string,
-    partner_id: string,
+    partners_ids: string[],
   ): Option<AlreadyHavePartner> {
-    return this.session_id.match({
+    return this.session_metadata.match({
       ifSome: () => Some(new AlreadyHavePartner()),
       ifNone: () => {
-        this.session_id = Some(session_id);
-        this.partner_id = Some(partner_id);
+        this.session_metadata = Some({
+          partners_ids,
+          session_id,
+        });
         this.updateState(ConnStateId.SESSION);
         return None();
       },
     });
   }
 
-  public getPartnerId(): Option<string> {
-    return this.partner_id;
+  public getPartnersId(): Option<string[]> {
+    return this.session_metadata.map(({ partners_ids }) => partners_ids);
   }
 
-  public removePartner() {
-    this.partner_id = None();
+  public removePartner(partner_id: string) {
+    this.session_metadata = this.session_metadata.map((metadata) => ({
+      ...metadata,
+      partners_ids: metadata.partners_ids.filter((id) => id !== partner_id),
+    }));
+  }
+  public getPartnerCount() {
+    return this.session_metadata.match({
+      ifSome: (x) => x.partners_ids.length,
+      ifNone: () => 0,
+    });
   }
 
   public getSessionId(): Option<string> {
-    return this.session_id;
+    return this.session_metadata.map(({ session_id }) => session_id);
   }
 }
 
@@ -120,31 +133,34 @@ class MatchingState extends ConnectionState {
     const conn = this.context.conn;
     conn.updateState(ConnStateId.MATCHING);
 
-    const match = this.context.manager.peer_matching.match({
+    const matched_user = this.context.manager.peer_matching.match({
       user_id: conn.user_id,
       duration: msg.focus_duration,
       tasks: msg.tasks,
     });
 
-    if (!match) {
-      conn.handleMessage({ type: "matching_pending" });
-      return None();
-    }
+    return matched_user.match({
+      ifNone: async () => {
+        conn.handleMessage({ type: "matching_pending" });
+        return None();
+      },
+      ifSome: async (client) => {
+        const other_conn_op = this.context.registry.get(client.user_id);
+        assert(other_conn_op.isSome());
+        const other_conn = other_conn_op.unwrap();
 
-    const other_conn_op = this.context.registry.get(match.user_id);
-    assert(other_conn_op.isSome());
-    const other_conn = other_conn_op.unwrap();
-
-    return await this.initSession(
-      conn,
-      msg.tasks,
-      other_conn,
-      match.tasks,
-      match.duration,
-    );
+        return await this.initSession(
+          conn,
+          msg.tasks,
+          other_conn,
+          client.tasks,
+          client.duration,
+        );
+      },
+    });
   }
 
-  public async initSession(
+  private async initSession(
     conn1: UserConn,
     tasks1: string[],
     conn2: UserConn,
@@ -158,6 +174,7 @@ class MatchingState extends ConnectionState {
       });
       if (!session) return Some(new DBError("Failed creating a session"));
 
+      // TODO: Handle the removal of users (in case it happens in dev or prod?)
       const [, , tasks1_res, tasks2_res] = await Promise.all([
         createSessionParticipant(client, {
           sessionId: session.sessionId,
@@ -187,8 +204,8 @@ class MatchingState extends ConnectionState {
         ),
       ]);
 
-      conn1.pair(session.sessionId, conn2.user_id);
-      conn2.pair(session.sessionId, conn1.user_id);
+      conn1.pair(session.sessionId, [conn2.user_id]);
+      conn2.pair(session.sessionId, [conn1.user_id]);
 
       const start_time = moment().toISOString();
       const scheduled_end_time = moment(start_time)
@@ -265,16 +282,36 @@ class SessionState extends ConnectionState {
   }
 
   public override async handleClose(): Promise<Result<boolean, AppError>> {
-    const partner = this.context.conn.getPartnerId();
-    partner.tap((p) => {
-      const partner_conn = this.context.registry.get(p).unwrap();
-      partner_conn.handleMessage({ type: "other_used_disconnected" });
-      partner_conn.removePartner();
-      this.context.registry.delete(partner_conn.user_id);
+    const partner = this.context.conn.getPartnersId();
+    partner.tap(async (partners) => {
+      for (const p of partners) {
+        const partner_conn = this.context.registry.get(p).unwrap();
+        partner_conn.handleMessage({ type: "other_used_disconnected" });
+        partner_conn.removePartner(this.context.conn.user_id);
+
+        if (partner_conn.getPartnerCount() === 0) {
+          await this.removeSession();
+          this.context.registry.delete(p);
+        }
+      }
     });
 
     this.context.registry.delete(this.context.conn.user_id);
     return Ok(false);
+  }
+
+  private async removeSession() {
+    this.context.conn.getSessionId().tap(async (session_id) => {
+      let client = null;
+      try {
+        client = await pool.connect();
+        await abortSession(client, {
+          sessionId: [session_id],
+        });
+      } finally {
+        if (client) client.release();
+      }
+    });
   }
 }
 
@@ -291,24 +328,23 @@ class CheckInState extends ConnectionState {
         const conn = this.context.conn;
         const user_id = conn.user_id;
         const session_id = conn.getSessionId();
-        const partner_id = conn.getPartnerId();
-        assert(session_id.isSome() && partner_id.isSome());
+        const partner_conn = this.context.registry
+          .get(msg.reviewee_id)
+          .unwrap();
+
         await createCheckInReport(client, {
           sessionId: session_id.unwrap(),
-          revieweeId: partner_id.unwrap(),
+          revieweeId: msg.reviewee_id,
           reviewerId: user_id,
           workProved: msg.work_proved ? "true" : "false",
         });
 
-        const partner_conn = this.context.registry
-          .get(partner_id.unwrap())
-          .unwrap();
         partner_conn.handleMessage({
           type: "checkin_report_sent",
           work_proved: msg.work_proved,
         });
 
-        // TODO: Check if all checkIn are submitted
+        // NOTE: This method will need to change later for private sessions, where we can have more than one user
         const result = await checkSessionDone(client, {
           sessionId: session_id.unwrap(),
         });
@@ -318,7 +354,7 @@ class CheckInState extends ConnectionState {
         if (result.done) {
           // Terminate session
           const other_conn = this.context.registry
-            .get(partner_id.unwrap())
+            .get(msg.reviewee_id)
             .unwrap();
 
           await Promise.all(
@@ -336,12 +372,15 @@ class CheckInState extends ConnectionState {
     } else if (msg.type == "checkin_message") {
       // TODO: create a checkin message in database (create the schema for it)
       const conn = this.context.conn;
-      const partner_conn = this.context.registry
-        .get(conn.getPartnerId().unwrap())
-        .unwrap(); // TODO: Handle these unwraps
-      partner_conn.handleMessage({
-        type: "checkin_partner_message",
-        content: msg.content,
+      const partners = conn.getPartnersId();
+      partners.tap((ps) => {
+        for (const p of ps) {
+          const partner_conn = this.context.registry.get(p).unwrap();
+          partner_conn.handleMessage({
+            type: "checkin_partner_message",
+            content: msg.content,
+          });
+        }
       });
     }
     return None();

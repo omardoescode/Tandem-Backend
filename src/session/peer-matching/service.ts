@@ -1,4 +1,6 @@
+import type Option from "@/utils/monads/Option";
 import type { PeerMatchingClient } from "./types";
+import { None, Some } from "@/utils/monads/Option";
 
 export default class PeerMatchingService {
   private static _instance: PeerMatchingService;
@@ -12,7 +14,7 @@ export default class PeerMatchingService {
   }
   private constructor() {}
 
-  public match(cl: PeerMatchingClient): PeerMatchingClient | null {
+  public match(cl: PeerMatchingClient): Option<PeerMatchingClient> {
     let queue = this.waitingClients.get(cl.duration);
 
     if (!queue) {
@@ -22,11 +24,11 @@ export default class PeerMatchingService {
 
     if (queue.length === 0) {
       queue.push(cl);
-      return null;
+      return None();
     } else {
       const other = queue[0]!;
       queue.shift();
-      return other;
+      return Some(other);
     }
   }
 

@@ -8,7 +8,7 @@ insert into session_participant(session_id, user_id) values ($1, $2) returning *
 insert into session_task(session_id, user_id, title) values ($1, $2, $3) returning *;
 
 -- name: toggleSessionTask :exec
-update session_task set is_complete = $2 where task_id = $1 and user_id = $3;
+update session_task set is_complete = $2 where task_id = $1 and user_id = $3; 
 
 -- name: getCompletedSessionsForCheckIn :many
 select ts.session_id, start_time, scheduled_duration, user_id
@@ -18,6 +18,9 @@ where start_time + scheduled_duration < now()
 
 -- name: updateSessionStatusToCheckIn :exec
 update tandem_session set status = 'checkin' where session_id = any($1);
+
+-- name: abortSession :exec
+update tandem_session set status = 'disconnected' where session_id = any($1);
 
 -- name: createCheckInReport :exec
 insert into checkin(session_id, reviewer_id, work_proved, reviewee_id) values ($1, $2, $3, $4);
