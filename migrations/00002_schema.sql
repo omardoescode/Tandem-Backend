@@ -1,6 +1,6 @@
 create table tandem_session (
   session_id uuid default uuidv7() primary key,
-  status varchar default 'running' check (status in ('running', 'checkin', 'finished')),
+  status varchar default 'running' check (status in ('disconnected', 'running', 'checkin', 'finished')),
   start_time timestamptz not null default now(),
   scheduled_duration interval not null 
 );
@@ -23,12 +23,11 @@ create table session_task (
   created_at timestamptz not null default now()
 );
 
--- TODO: Figure out the best PK for this
 create table checkin (
   session_id uuid not null references tandem_session(session_id),
   reviewer_id text not null references "user"(id),
   reviewee_id text not null references "user"(id),
   work_proved boolean not null,
-  primary key (session_id, reviewer_id, reviewee_id)
+  primary key (session_id, reviewee_id, reviewer_id)
 );
 

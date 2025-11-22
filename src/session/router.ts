@@ -13,8 +13,8 @@ const sessionRouter = new Hono();
 // TODO: Replace with redis or postgres db
 // NOTE: These are just random stuff for development on my machine
 const tickets: Record<string, string> = {
-  "0": "WOQjTlaEsqtgGE17v6RTXe8lwPJUNzpB",
-  "1": "k0ESWZ5UjfCu3mBshWYdJtxUx3jWYpqu",
+  "0": "gA7Qb61p2QfRs6ubn7xbV2tAx3Cs9HnA",
+  "1": "A5TvcNvIdWLJ11iS70MinlevGCBAAxgd",
 };
 
 sessionRouter.get(
@@ -89,13 +89,13 @@ sessionRouter.get(
           user_id,
           parsed,
         );
-        if (res.isSome()) throw res.unwrap();
+        if (res) throw res;
       },
       async onClose(event, ws) {
         assert(user_id);
         console.log(`User ${user_id} disconnected.`);
         const res = await ConnectionManager.instance().handleClose(user_id);
-        if (res.isSome()) throw res.unwrap();
+        if (res) throw res;
       },
       onError(event, ws) {
         console.error(`WebSocket error for ${user_id}:`, event);

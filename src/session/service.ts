@@ -17,14 +17,13 @@ import {
   toggleSessionTask,
   abortSession,
 } from "db/tandem_sessions_sql";
+import pool from "@/db/pool";
+import type { PoolClient as Client } from "pg";
 import interval from "postgres-interval";
 import { DBError } from "@/db/errors";
-import Option, { Some, None } from "@/utils/monads/Option";
 import { AlreadyHavePartner } from "./error";
-import type AppError from "@/utils/error_handling/AppError";
-import Result, { Ok } from "@/utils/monads/Result";
+import AppError from "@/utils/error_handling/AppError";
 import moment from "moment";
-import { withClient } from "@/db/helpers";
 
 enum ConnStateId {
   MATCHING = "MATCHING",
@@ -36,10 +35,10 @@ class UserConn {
   public readonly user_id: string;
   private _ws: WSContext;
   private _state: ConnStateId;
-  private session_metadata: Option<{
+  private session_metadata: {
     session_id: string;
     partners_ids: string[];
-  }> = None();
+  } | null = null;
 
   constructor(user_id: string, ws: WSContext) {
     this.user_id = user_id;
@@ -66,39 +65,42 @@ class UserConn {
   public pair(
     session_id: string,
     partners_ids: string[],
-  ): Option<AlreadyHavePartner> {
-    return this.session_metadata.match({
-      ifSome: () => Some(new AlreadyHavePartner()),
-      ifNone: () => {
-        this.session_metadata = Some({
-          partners_ids,
-          session_id,
-        });
-        this.updateState(ConnStateId.SESSION);
-        return None();
-      },
-    });
+  ): AlreadyHavePartner | null {
+    if (this.session_metadata) {
+      return new AlreadyHavePartner();
+    } else {
+      this.session_metadata = {
+        partners_ids,
+        session_id,
+      };
+      this.updateState(ConnStateId.SESSION);
+      return null;
+    }
   }
 
-  public getPartnersId(): Option<string[]> {
-    return this.session_metadata.map(({ partners_ids }) => partners_ids);
+  public getPartnersId(): string[] | null {
+    return this.session_metadata ? this.session_metadata.partners_ids : null;
   }
 
   public removePartner(partner_id: string) {
-    this.session_metadata = this.session_metadata.map((metadata) => ({
-      ...metadata,
-      partners_ids: metadata.partners_ids.filter((id) => id !== partner_id),
-    }));
-  }
-  public getPartnerCount() {
-    return this.session_metadata.match({
-      ifSome: (x) => x.partners_ids.length,
-      ifNone: () => 0,
-    });
+    if (this.session_metadata) {
+      this.session_metadata = {
+        ...this.session_metadata,
+        partners_ids: this.session_metadata.partners_ids.filter(
+          (id) => id !== partner_id,
+        ),
+      };
+    }
   }
 
-  public getSessionId(): Option<string> {
-    return this.session_metadata.map(({ session_id }) => session_id);
+  public getPartnerCount(): number {
+    return this.session_metadata
+      ? this.session_metadata.partners_ids.length
+      : 0;
+  }
+
+  public getSessionId(): string | null {
+    return this.session_metadata ? this.session_metadata.session_id : null;
   }
 }
 
@@ -118,60 +120,62 @@ abstract class ConnectionState {
   }
   public abstract handleMessage(
     msg: SessionWsMessage,
-  ): Promise<Option<AppError>>;
+  ): Promise<AppError | null>;
 
-  public abstract handleClose(): Promise<Result<boolean, AppError>>;
+  public abstract handleClose(): Promise<boolean | AppError>;
 }
 
 class MatchingState extends ConnectionState {
   public readonly id = ConnStateId.MATCHING;
 
-  public async handleMessage(msg: SessionWsMessage): Promise<Option<AppError>> {
-    if (msg.type !== "init_session") return None();
+  public async handleMessage(msg: SessionWsMessage): Promise<AppError | null> {
+    if (msg.type !== "init_session") return null;
 
     const conn = this.context.conn;
     conn.updateState(ConnStateId.MATCHING);
 
+    // PeerMatchingService.match is assumed to return MatchedUser | null
     const matched_user = this.context.manager.peer_matching.match({
       user_id: conn.user_id,
       duration: msg.focus_duration,
       tasks: msg.tasks,
     });
 
-    return matched_user.match({
-      ifNone: async () => {
-        conn.handleMessage({ type: "matching_pending" });
-        return None();
-      },
-      ifSome: async (client) => {
-        const other_conn_op = this.context.registry.get(client.user_id);
-        assert(other_conn_op.isSome());
-        const other_conn = other_conn_op.unwrap();
+    if (!matched_user) {
+      conn.handleMessage({ type: "matching_pending" });
+      return null;
+    } else {
+      const other_conn = this.context.registry.get(matched_user.user_id);
+      assert(other_conn !== null); // Assumes get returns UserConn | null
 
-        const db_result = await this.initSession(
-          conn,
-          msg.tasks,
-          other_conn,
-          client.tasks,
-          client.duration,
-        );
+      const db_result = await this.initSession(
+        conn,
+        msg.tasks,
+        other_conn!,
+        matched_user.tasks,
+        matched_user.duration,
+      );
 
-        return db_result.match({
-          ifOk: () => None(),
-          ifErr: (err) => Some(err),
-        });
-      },
-    });
+      if (db_result instanceof AppError) {
+        return db_result;
+      }
+
+      return null;
+    }
   }
 
+  // Changed to return void | DBError
   private async initSession(
     conn1: UserConn,
     tasks1: string[],
     conn2: UserConn,
     tasks2: string[],
     session_duration: Duration,
-  ): Promise<Result<void, DBError>> {
-    return withClient(async (client) => {
+  ): Promise<void | DBError> {
+    let client: Client | null = null;
+    try {
+      client = await pool.connect();
+
       const session = await createSession(client, {
         scheduledDuration: interval(session_duration),
       });
@@ -241,14 +245,23 @@ class MatchingState extends ConnectionState {
         start_time,
         scheduled_end_time,
       });
-    });
+      await client.query("commit");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } catch (err: any) {
+      if (client) await client.query("rollback");
+      return err instanceof DBError
+        ? err
+        : new DBError("Session creation failed", { reason: err });
+    } finally {
+      if (client) client.release();
+    }
   }
 
-  public override async handleClose(): Promise<Result<boolean, AppError>> {
+  public override async handleClose(): Promise<boolean | AppError> {
     this.context.manager.peer_matching.disconnectClient(
       this.context.conn.user_id,
     );
-    return Ok(true);
+    return true;
   }
 }
 
@@ -257,58 +270,70 @@ class SessionState extends ConnectionState {
 
   public override async handleMessage(
     msg: SessionWsMessage,
-  ): Promise<Option<AppError>> {
+  ): Promise<AppError | null> {
     if (msg.type == "toggle_task") {
-      const db_result = await withClient(async (client) => {
+      let client: Client | null = null;
+      try {
+        client = await pool.connect();
         await toggleSessionTask(client, {
           taskId: msg.task_id,
           userId: this.context.conn.user_id,
           isComplete: msg.is_complete ? "true" : "false",
         });
-      });
-
-      return db_result.match({
-        ifOk: () => None(),
-        ifErr: (err) => {
-          console.error(err);
-          return Some(err);
-        },
-      });
+        await client.query("commit");
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } catch (err: any) {
+        if (client) await client.query("rollback");
+        console.error(err);
+        return err instanceof DBError
+          ? err
+          : new DBError("Toggle task failed", { reason: err });
+      } finally {
+        if (client) client.release();
+      }
     }
-    return None();
+    return null;
   }
 
-  public override async handleClose(): Promise<Result<boolean, AppError>> {
-    const partner = this.context.conn.getPartnersId();
-    partner.tap(async (partners) => {
+  public override async handleClose(): Promise<boolean | AppError> {
+    const partners = this.context.conn.getPartnersId(); // string[] | null
+    if (partners) {
       for (const p of partners) {
-        const partner_conn = this.context.registry.get(p).unwrap();
-        partner_conn.handleMessage({ type: "other_used_disconnected" });
-        partner_conn.removePartner(this.context.conn.user_id);
+        const partner_conn = this.context.registry.get(p); // UserConn | null
+        if (partner_conn) {
+          partner_conn.handleMessage({ type: "other_used_disconnected" });
+          partner_conn.removePartner(this.context.conn.user_id);
 
-        if (partner_conn.getPartnerCount() === 0) {
-          await this.removeSession();
-          this.context.registry.delete(p);
+          if (partner_conn.getPartnerCount() === 0) {
+            await this.removeSession();
+            this.context.registry.delete(p);
+          }
         }
       }
-    });
+    }
 
     this.context.registry.delete(this.context.conn.user_id);
-    return Ok(false);
+    return false;
   }
 
   private async removeSession() {
-    this.context.conn.getSessionId().tap(async (session_id) => {
-      const db_result = await withClient(async (client) => {
+    const session_id = this.context.conn.getSessionId(); // string | null
+    if (session_id) {
+      let client: Client | null = null;
+      try {
+        client = await pool.connect();
         await abortSession(client, {
           sessionId: [session_id],
         });
-      });
-
-      if (db_result.isErr()) {
-        console.error("Failed to abort session:", db_result.unwrapErr());
+        await client.query("commit");
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } catch (err: any) {
+        if (client) await client.query("rollback");
+        console.error("Failed to abort session:", err);
+      } finally {
+        if (client) client.release();
       }
-    });
+    }
   }
 }
 
@@ -317,15 +342,18 @@ class CheckInState extends ConnectionState {
 
   public override async handleMessage(
     msg: SessionWsMessage,
-  ): Promise<Option<AppError>> {
+  ): Promise<AppError | null> {
     if (msg.type === "checkin_report") {
-      const db_result = await withClient(async (client) => {
+      let client: Client | null = null;
+      try {
+        client = await pool.connect();
         const conn = this.context.conn;
         const user_id = conn.user_id;
-        const session_id = conn.getSessionId().unwrap();
-        const partner_conn = this.context.registry
-          .get(msg.reviewee_id)
-          .unwrap();
+        const session_id = conn.getSessionId(); // string | null
+        if (!session_id) throw new DBError("Session ID missing for checkin");
+
+        const partner_conn = this.context.registry.get(msg.reviewee_id); // UserConn | null
+        if (!partner_conn) throw new Error("Partner connection missing");
 
         await createCheckInReport(client, {
           sessionId: session_id,
@@ -344,13 +372,12 @@ class CheckInState extends ConnectionState {
           sessionId: session_id,
         });
 
-        if (!result) throw new DBError();
+        if (!result) throw new DBError("Failed to check session done status");
 
         if (result.done) {
           // Terminate session
-          const other_conn = this.context.registry
-            .get(msg.reviewee_id)
-            .unwrap();
+          const other_conn = this.context.registry.get(msg.reviewee_id);
+          assert(other_conn !== null);
 
           await Promise.all(
             [conn, other_conn].map((c) => {
@@ -361,26 +388,37 @@ class CheckInState extends ConnectionState {
             }),
           );
         }
-      });
-      return db_result.isErr() ? Some(db_result.unwrapErr()) : None();
+        await client.query("commit");
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } catch (err: any) {
+        if (client) await client.query("rollback");
+        return err instanceof AppError
+          ? err
+          : new DBError("Check-in report failed", { reason: err });
+      } finally {
+        if (client) client.release();
+      }
     } else if (msg.type == "checkin_message") {
       // TODO: create a checkin message in database (create the schema for it)
       const conn = this.context.conn;
-      const partners = conn.getPartnersId();
-      partners.tap((ps) => {
-        for (const p of ps) {
-          const partner_conn = this.context.registry.get(p).unwrap();
-          partner_conn.handleMessage({
-            type: "checkin_partner_message",
-            content: msg.content,
-          });
+      const partners = conn.getPartnersId(); // string[] | null
+      if (partners) {
+        for (const p of partners) {
+          const partner_conn = this.context.registry.get(p); // UserConn | null
+          if (partner_conn) {
+            partner_conn.handleMessage({
+              type: "checkin_partner_message",
+              content: msg.content,
+            });
+          }
         }
-      });
+      }
     }
-    return None();
+    return null;
   }
-  public override async handleClose(): Promise<Result<boolean, AppError>> {
-    return Ok(true);
+
+  public override async handleClose(): Promise<boolean | AppError> {
+    return true;
   }
 }
 
@@ -415,8 +453,8 @@ class ConnectionRegistry {
     this.conns.set(user_id, conn);
   }
 
-  public get(user_id: string): Option<UserConn> {
-    return Option.fromNullable(() => this.conns.get(user_id));
+  public get(user_id: string): UserConn | null {
+    return this.conns.get(user_id) || null;
   }
 
   public delete(user_id: string): boolean {
@@ -453,46 +491,55 @@ export class ConnectionManager {
   public async handleMessage(
     user_id: string,
     msg: SessionWsMessage,
-  ): Promise<Option<DBError>> {
-    const conn_op = this.registry.get(user_id);
-    if (conn_op.isNone()) return None();
-    const conn = conn_op.unwrap();
+  ): Promise<DBError | null> {
+    const conn = this.registry.get(user_id);
+    if (!conn) return null;
 
     const state = StateFactory.build(conn.status(), conn, this.registry, this);
-    return await state.handleMessage(msg);
+    const result = await state.handleMessage(msg); // AppError | null
+
+    // Convert AppError | null to DBError | null (assuming we only propagate DBError here)
+    if (result instanceof DBError) return result;
+    if (result instanceof AppError)
+      return new DBError(result.message, { reason: result });
+    return null;
   }
 
-  public async handleClose(user_id: string): Promise<Option<AppError>> {
-    const conn_op = this.registry.get(user_id);
-    if (conn_op.isNone()) return None();
-    const conn = conn_op.unwrap();
+  public async handleClose(user_id: string): Promise<AppError | null> {
+    const conn = this.registry.get(user_id); // UserConn | null
+    if (!conn) return null;
 
     const state = StateFactory.build(conn.status(), conn, this.registry, this);
-    const result = await state.handleClose();
-    return result.match({
-      ifOk: (to_remove) => {
-        if (to_remove) this.registry.delete(conn.user_id);
-        return None();
-      },
-      ifErr: (err) => Some(err),
-    });
+    const result = await state.handleClose(); // boolean | AppError
+
+    if (result instanceof AppError) {
+      return result;
+    }
+
+    // Success case: result is boolean
+    if (result) this.registry.delete(conn.user_id);
+    return null;
   }
 
   // I believe it's fine to use polling here, given it's almost the case there will be many sessions done at the same time, if many users use this of course
   private async checkCompletedSessions() {
-    console.log("starting checking completed sessions");
     while (true) {
-      const db_result = await withClient(async (client) => {
+      let client: Client | null = null;
+      try {
+        client = await pool.connect();
         const sessions = await getCompletedSessionsForCheckIn(client);
         const now = moment();
         const CHECK_IN_MINUTES = 2;
-        console.log(sessions.map((x) => x.sessionId));
 
         if (sessions.length !== 0) {
           sessions.forEach((x) => {
-            const conn_op = this.registry.get(x.userId);
-            if (conn_op.isNone()) return false;
-            const conn = conn_op.unwrap();
+            console.log(
+              "Sessions moving to checkin: ",
+              sessions.map((x) => x.sessionId),
+            );
+            const conn = this.registry.get(x.userId); // UserConn | null
+            if (!conn) return false;
+
             conn.updateState(ConnStateId.CHECKIN);
             conn.handleMessage({
               type: "checkin_start",
@@ -506,15 +553,18 @@ export class ConnectionManager {
           await updateSessionStatusToCheckIn(client, {
             sessionId: sessions.map((x) => x.sessionId),
           });
+          await client.query("commit");
         }
-      });
-
-      if (db_result.isErr()) {
-        console.error("Error checking sessions:", db_result.unwrapErr());
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } catch (err: any) {
+        if (client) await client.query("rollback");
+        console.error("Error checking sessions:", err);
+      } finally {
+        if (client) client.release();
       }
 
-      // wait 0.5 second before next iteration
-      await new Promise((r) => setTimeout(r, 500));
+      // wait 1 second before next iteration
+      await new Promise((r) => setTimeout(r, 1000));
     }
   }
 }
