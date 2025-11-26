@@ -163,6 +163,7 @@ class MatchingState extends ConnectionState {
     let client: Client | null = null;
     try {
       client = await pool.connect();
+      client.query("begin");
 
       const session = await createSession(client, {
         scheduledDuration: interval(session_duration),
@@ -264,6 +265,7 @@ class SessionState extends ConnectionState {
       let client: Client | null = null;
       try {
         client = await pool.connect();
+        client.query("begin");
         await toggleSessionTask(client, {
           taskId: msg.task_id,
           userId: context.conn.user_id,
@@ -310,6 +312,8 @@ class SessionState extends ConnectionState {
       let client: Client | null = null;
       try {
         client = await pool.connect();
+        client.query("begin");
+        client.query("begin");
         await abortSession(client, {
           sessionId: [session_id],
         });
@@ -334,6 +338,7 @@ class CheckInState extends ConnectionState {
       let client: Client | null = null;
       try {
         client = await pool.connect();
+        client.query("begin");
         const conn = context.conn;
         const user_id = conn.user_id;
         const session_id = conn.getSessionId();
@@ -502,6 +507,7 @@ export class ConnectionManager {
       let client: Client | null = null;
       try {
         client = await pool.connect();
+        client.query("begin");
         const sessions = await getCompletedSessionsForCheckIn(client);
         const now = moment();
         const CHECK_IN_MINUTES = 2;
