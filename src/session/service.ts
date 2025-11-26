@@ -25,36 +25,36 @@ import { AlreadyHavePartner } from "./error";
 import AppError from "@/utils/error_handling/AppError";
 import moment from "moment";
 
-enum ConnStateId {
-  MATCHING = "MATCHING",
-  SESSION = "SESSION",
-  CHECKIN = "CHECKIN",
+interface StateContext {
+  registry: ConnectionRegistry;
+  manager: ConnectionManager;
+  conn: UserConn;
 }
 
 class UserConn {
   public readonly user_id: string;
   private _ws: WSContext;
-  private _state: ConnStateId;
+  private _state: ConnectionState;
   private session_metadata: {
     session_id: string;
     partners_ids: string[];
   } | null = null;
 
-  constructor(user_id: string, ws: WSContext) {
+  constructor(user_id: string, ws: WSContext, state: ConnectionState) {
     this.user_id = user_id;
     this._ws = ws;
-    this._state = ConnStateId.MATCHING;
+    this._state = state;
   }
 
   public handleMessage(msg: SessionWsResponse) {
     this._ws.send(JSON.stringify(msg));
   }
 
-  public status(): ConnStateId {
+  public state(): ConnectionState {
     return this._state;
   }
 
-  public updateState(to: ConnStateId): void {
+  public updateState(to: ConnectionState): void {
     this._state = to;
   }
 
@@ -73,7 +73,6 @@ class UserConn {
         partners_ids,
         session_id,
       };
-      this.updateState(ConnStateId.SESSION);
       return null;
     }
   }
@@ -105,51 +104,41 @@ class UserConn {
 }
 
 abstract class ConnectionState {
-  protected context: {
-    conn: UserConn;
-    registry: ConnectionRegistry;
-    manager: ConnectionManager;
-  };
-  public abstract readonly id: ConnStateId;
-  constructor(
-    conn: UserConn,
-    registry: ConnectionRegistry,
-    manager: ConnectionManager,
-  ) {
-    this.context = { conn, registry, manager };
-  }
   public abstract handleMessage(
+    context: StateContext,
     msg: SessionWsMessage,
   ): Promise<AppError | null>;
 
-  public abstract handleClose(): Promise<boolean | AppError>;
+  public abstract handleClose(
+    context: StateContext,
+  ): Promise<boolean | AppError>;
 }
 
 class MatchingState extends ConnectionState {
-  public readonly id = ConnStateId.MATCHING;
-
-  public async handleMessage(msg: SessionWsMessage): Promise<AppError | null> {
+  public async handleMessage(
+    context: StateContext,
+    msg: SessionWsMessage,
+  ): Promise<AppError | null> {
     if (msg.type !== "init_session") return null;
 
-    const conn = this.context.conn;
-    conn.updateState(ConnStateId.MATCHING);
+    context.conn.updateState(new SessionState());
 
     // PeerMatchingService.match is assumed to return MatchedUser | null
-    const matched_user = this.context.manager.peer_matching.match({
-      user_id: conn.user_id,
+    const matched_user = context.manager.peer_matching.match({
+      user_id: context.conn.user_id,
       duration: msg.focus_duration,
       tasks: msg.tasks,
     });
 
     if (!matched_user) {
-      conn.handleMessage({ type: "matching_pending" });
+      context.conn.handleMessage({ type: "matching_pending" });
       return null;
     } else {
-      const other_conn = this.context.registry.get(matched_user.user_id);
-      assert(other_conn !== null); // Assumes get returns UserConn | null
+      const other_conn = context.registry.get(matched_user.user_id);
+      assert(other_conn !== null);
 
       const db_result = await this.initSession(
-        conn,
+        context.conn,
         msg.tasks,
         other_conn!,
         matched_user.tasks,
@@ -164,7 +153,6 @@ class MatchingState extends ConnectionState {
     }
   }
 
-  // Changed to return void | DBError
   private async initSession(
     conn1: UserConn,
     tasks1: string[],
@@ -213,6 +201,8 @@ class MatchingState extends ConnectionState {
 
       conn1.pair(session.sessionId, [conn2.user_id]);
       conn2.pair(session.sessionId, [conn1.user_id]);
+      conn1.updateState(new SessionState());
+      conn2.updateState(new SessionState());
 
       const start_time = moment().toISOString();
       const scheduled_end_time = moment(start_time)
@@ -257,18 +247,17 @@ class MatchingState extends ConnectionState {
     }
   }
 
-  public override async handleClose(): Promise<boolean | AppError> {
-    this.context.manager.peer_matching.disconnectClient(
-      this.context.conn.user_id,
-    );
+  public override async handleClose(
+    context: StateContext,
+  ): Promise<boolean | AppError> {
+    context.manager.peer_matching.disconnectClient(context.conn.user_id);
     return true;
   }
 }
 
 class SessionState extends ConnectionState {
-  public override id: ConnStateId = ConnStateId.SESSION;
-
   public override async handleMessage(
+    context: StateContext,
     msg: SessionWsMessage,
   ): Promise<AppError | null> {
     if (msg.type == "toggle_task") {
@@ -277,17 +266,14 @@ class SessionState extends ConnectionState {
         client = await pool.connect();
         await toggleSessionTask(client, {
           taskId: msg.task_id,
-          userId: this.context.conn.user_id,
+          userId: context.conn.user_id,
           isComplete: msg.is_complete ? "true" : "false",
         });
         await client.query("commit");
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } catch (err: any) {
+      } catch (err) {
         if (client) await client.query("rollback");
         console.error(err);
-        return err instanceof DBError
-          ? err
-          : new DBError("Toggle task failed", { reason: err });
+        return new DBError("Toggle task failed", { reason: err });
       } finally {
         if (client) client.release();
       }
@@ -295,29 +281,31 @@ class SessionState extends ConnectionState {
     return null;
   }
 
-  public override async handleClose(): Promise<boolean | AppError> {
-    const partners = this.context.conn.getPartnersId(); // string[] | null
+  public override async handleClose(
+    context: StateContext,
+  ): Promise<boolean | AppError> {
+    const partners = context.conn.getPartnersId();
     if (partners) {
       for (const p of partners) {
-        const partner_conn = this.context.registry.get(p); // UserConn | null
+        const partner_conn = context.registry.get(p);
         if (partner_conn) {
           partner_conn.handleMessage({ type: "other_used_disconnected" });
-          partner_conn.removePartner(this.context.conn.user_id);
+          partner_conn.removePartner(context.conn.user_id);
 
           if (partner_conn.getPartnerCount() === 0) {
-            await this.removeSession();
-            this.context.registry.delete(p);
+            await this.removeSession(context.conn);
+            context.registry.delete(p);
           }
         }
       }
     }
 
-    this.context.registry.delete(this.context.conn.user_id);
+    context.registry.delete(context.conn.user_id);
     return false;
   }
 
-  private async removeSession() {
-    const session_id = this.context.conn.getSessionId(); // string | null
+  private async removeSession(conn: UserConn) {
+    const session_id = conn.getSessionId();
     if (session_id) {
       let client: Client | null = null;
       try {
@@ -338,21 +326,20 @@ class SessionState extends ConnectionState {
 }
 
 class CheckInState extends ConnectionState {
-  public override id: ConnStateId = ConnStateId.CHECKIN;
-
   public override async handleMessage(
+    context: StateContext,
     msg: SessionWsMessage,
   ): Promise<AppError | null> {
     if (msg.type === "checkin_report") {
       let client: Client | null = null;
       try {
         client = await pool.connect();
-        const conn = this.context.conn;
+        const conn = context.conn;
         const user_id = conn.user_id;
-        const session_id = conn.getSessionId(); // string | null
+        const session_id = conn.getSessionId();
         if (!session_id) throw new DBError("Session ID missing for checkin");
 
-        const partner_conn = this.context.registry.get(msg.reviewee_id); // UserConn | null
+        const partner_conn = context.registry.get(msg.reviewee_id);
         if (!partner_conn) throw new Error("Partner connection missing");
 
         await createCheckInReport(client, {
@@ -376,7 +363,7 @@ class CheckInState extends ConnectionState {
 
         if (result.done) {
           // Terminate session
-          const other_conn = this.context.registry.get(msg.reviewee_id);
+          const other_conn = context.registry.get(msg.reviewee_id);
           assert(other_conn !== null);
 
           await Promise.all(
@@ -384,7 +371,7 @@ class CheckInState extends ConnectionState {
               c.handleMessage({
                 type: "session_done",
               });
-              this.context.registry.delete(c.user_id);
+              context.registry.delete(c.user_id);
             }),
           );
         }
@@ -400,11 +387,11 @@ class CheckInState extends ConnectionState {
       }
     } else if (msg.type == "checkin_message") {
       // TODO: create a checkin message in database (create the schema for it)
-      const conn = this.context.conn;
-      const partners = conn.getPartnersId(); // string[] | null
+      const conn = context.conn;
+      const partners = conn.getPartnersId();
       if (partners) {
         for (const p of partners) {
-          const partner_conn = this.context.registry.get(p); // UserConn | null
+          const partner_conn = context.registry.get(p);
           if (partner_conn) {
             partner_conn.handleMessage({
               type: "checkin_partner_message",
@@ -419,21 +406,6 @@ class CheckInState extends ConnectionState {
 
   public override async handleClose(): Promise<boolean | AppError> {
     return true;
-  }
-}
-
-class StateFactory {
-  static build(
-    id: ConnStateId,
-    conn: UserConn,
-    reg: ConnectionRegistry,
-    m: ConnectionManager,
-  ): ConnectionState {
-    console.log(`Building state ${id} for user_id=${conn.user_id}`);
-    if (id === ConnStateId.MATCHING) return new MatchingState(conn, reg, m);
-    if (id === ConnStateId.SESSION) return new SessionState(conn, reg, m);
-    if (id === ConnStateId.CHECKIN) return new CheckInState(conn, reg, m);
-    throw new Error("unimplemented state");
   }
 }
 
@@ -469,10 +441,15 @@ export class ConnectionManager {
   private static _instance: ConnectionManager | null = null;
   public peer_matching: PeerMatchingService;
   private registry: ConnectionRegistry;
+  private context: Omit<StateContext, "conn">;
 
   constructor() {
     this.peer_matching = PeerMatchingService.instance();
     this.registry = new ConnectionRegistry();
+    this.context = {
+      manager: this,
+      registry: this.registry,
+    };
   }
 
   static instance(): ConnectionManager {
@@ -485,7 +462,7 @@ export class ConnectionManager {
   }
 
   public initConn(ws: WSContext, user_id: string) {
-    this.registry.add(new UserConn(user_id, ws));
+    this.registry.add(new UserConn(user_id, ws, new MatchingState()));
   }
 
   public async handleMessage(
@@ -495,10 +472,10 @@ export class ConnectionManager {
     const conn = this.registry.get(user_id);
     if (!conn) return null;
 
-    const state = StateFactory.build(conn.status(), conn, this.registry, this);
-    const result = await state.handleMessage(msg); // AppError | null
+    const result = await conn
+      .state()
+      .handleMessage({ ...this.context, conn }, msg);
 
-    // Convert AppError | null to DBError | null (assuming we only propagate DBError here)
     if (result instanceof DBError) return result;
     if (result instanceof AppError)
       return new DBError(result.message, { reason: result });
@@ -509,14 +486,12 @@ export class ConnectionManager {
     const conn = this.registry.get(user_id); // UserConn | null
     if (!conn) return null;
 
-    const state = StateFactory.build(conn.status(), conn, this.registry, this);
-    const result = await state.handleClose(); // boolean | AppError
+    const result = await conn.state().handleClose({ ...this.context, conn }); // boolean | AppError
 
     if (result instanceof AppError) {
       return result;
     }
 
-    // Success case: result is boolean
     if (result) this.registry.delete(conn.user_id);
     return null;
   }
@@ -540,7 +515,7 @@ export class ConnectionManager {
             const conn = this.registry.get(x.userId); // UserConn | null
             if (!conn) return false;
 
-            conn.updateState(ConnStateId.CHECKIN);
+            conn.updateState(new CheckInState());
             conn.handleMessage({
               type: "checkin_start",
               start_time: now.toISOString(),
