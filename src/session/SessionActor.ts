@@ -6,13 +6,15 @@ import ActorContext from "../framework/ActorContext";
 import assert from "assert";
 import type { TaskContext } from "./TaskActor";
 import { v7 } from "uuid";
-import type { DBClientMessage } from "./DBClientActor";
+import { ExecuteMessage, type DBClientMessage } from "./DBClientActor";
+import { createSession } from "db/tandem_sessions_sql";
+import interval from "postgres-interval";
 
 export type SessionMessage =
   | {
       type: "UserJoin";
       user_ref: ActorRef<UserMessage>;
-      duration_seconds: number;
+      duration: string;
       tasks: string[];
     }
   | { type: "StartSession"; client: ActorRef<DBClientMessage> }
@@ -31,7 +33,7 @@ export class SessionActor extends Actor<SessionMessage> {
   private state: SessionState = SessionState.JOINING;
   private timeout: Timer | null = null;
   private users: { ref: ActorRef<UserMessage>; tasks: string[] }[] = [];
-  private duration_seconds: number | null = null;
+  private duration: string | null = null;
 
   constructor(
     session_id: string,
@@ -45,9 +47,8 @@ export class SessionActor extends Actor<SessionMessage> {
   ): Promise<void> {
     switch (message.type) {
       case "UserJoin":
-        if (this.duration_seconds === null)
-          this.duration_seconds = message.duration_seconds;
-        assert(this.duration_seconds === message.duration_seconds);
+        if (this.duration === null) this.duration = message.duration;
+        assert(this.duration === message.duration);
 
         if (!this.users.some((u) => u.ref.id === message.user_ref.id))
           this.users.push({ ref: message.user_ref, tasks: message.tasks });
@@ -56,16 +57,23 @@ export class SessionActor extends Actor<SessionMessage> {
       case "StartSession": {
         console.log("StartSession received");
         if (this.state !== SessionState.JOINING) return;
-        assert(this.users.length !== 0 && this.duration_seconds !== null);
+        assert(this.users.length !== 0 && this.duration !== null);
 
         const start_time = moment();
-        const duration = moment.duration(this.duration_seconds, "seconds");
+        const duration = moment.duration(this.duration, "seconds");
 
         this.timeout = setTimeout(() => {
           this.send({ type: "TimerExpired" });
         }, duration.asMilliseconds());
 
         this.state = SessionState.RUNNING;
+
+        await message.client.send(
+          ExecuteMessage(createSession, {
+            sessionId: this.id,
+            scheduledDuration: interval(this.duration),
+          }),
+        );
 
         await Promise.all(
           this.users.map(async (u) => {

@@ -20,13 +20,13 @@ const ticket_ctx = new TicketManagerContext();
 const ticket_ref = await ticket_ctx.spawn("ticket-manager-singleton");
 
 await ticket_ref.ask<string>({
-  type: "add_ticket",
+  type: "AddTicket",
   user_id: "CLp1lNLXXn8VXr8l2YhlUEksOsFMSZpD",
   expiration_seconds: -1,
 });
 
 await ticket_ref.ask<string>({
-  type: "add_ticket",
+  type: "AddTicket",
   user_id: "CLp1lNLXXn8VXr8l2YhlUEksOsFMSZpD",
   expiration_seconds: -1,
 });
@@ -63,7 +63,7 @@ sessionRouter.get(
   async (c) => {
     const user = c.get("user");
     const ticket = await ticket_ref.ask<string>({
-      type: "add_ticket",
+      type: "AddTicket",
       user_id: user.id,
       expiration_seconds: 2 * 60,
     });
@@ -88,7 +88,7 @@ sessionRouter.get(
       };
     }
     const user_id = await ticket_ref.ask<string | null>({
-      type: "use_ticket",
+      type: "UseTicket",
       ticket_id: ticket,
     });
 

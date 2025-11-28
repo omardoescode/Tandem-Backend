@@ -11,7 +11,9 @@ insert into session_task(task_id, session_id, user_id, title) values ($1, $2, $3
 select 1 exists from session_task where session_id = $1 and user_id = $2;
 
 -- name: toggleSessionTask :exec
-update session_task set is_complete = $2 where task_id = $1 and user_id = $3; 
+update session_task
+set is_complete = sqlc.arg(is_complete)::boolean
+where task_id = sqlc.arg(task_id) and user_id = sqlc.arg(user_id);
 
 -- name: getCompletedSessionsForCheckIn :many
 select ts.session_id, start_time, scheduled_duration, user_id

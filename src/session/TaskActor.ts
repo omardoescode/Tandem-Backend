@@ -38,9 +38,10 @@ export class TaskActor extends Actor<TaskMessage> {
         break;
       }
       case "Set": {
+        console.log("In set command");
         message.db_client.send(
           ExecuteMessage(toggleSessionTask, {
-            isComplete: message.value ? "true" : "false",
+            isComplete: message.value,
             taskId: this.id,
             userId: message.user_id,
           }),

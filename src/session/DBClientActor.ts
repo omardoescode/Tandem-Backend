@@ -45,8 +45,9 @@ export class DBClientActor extends Actor<DBClientMessage> {
   ): Promise<void> {
     switch (message.type) {
       case "Init":
-        if (!this.client) return;
+        if (this.client) return;
         this.client = await pool.connect();
+        await this.client.query("begin");
         break;
 
       case "Execute":
@@ -70,7 +71,9 @@ export class DBClientActor extends Actor<DBClientMessage> {
           return;
         }
 
+        console.log("About to commit");
         await this.client.query("commit");
+        console.log("this committed");
         break;
 
       case "Rollback":

@@ -111,7 +111,7 @@ export class PeerMatchingActor extends Actor<MatchingMessage> {
 
         await session.send({
           type: "UserJoin",
-          duration_seconds: moment.duration(cl.duration).asSeconds(),
+          duration: cl.duration,
           user_ref,
           tasks: cl.tasks,
         });
