@@ -7,7 +7,7 @@ import { SessionWSMessageSchema, type SessionWsMessage } from "./validation";
 import assert from "assert";
 // import { ConnectionManager } from "./service_old";
 import { TicketManagerContext } from "./TicketManagerActor";
-import { UserContext } from "./UserActor";
+import { ConnContext } from "./ConnActor";
 import { SessionContext } from "./SessionActor";
 import { TaskContext } from "./TaskActor";
 import { DBClientContext } from "./DBClientActor";
@@ -27,14 +27,14 @@ await ticket_ref.ask<string>({
 
 await ticket_ref.ask<string>({
   type: "AddTicket",
-  user_id: "CLp1lNLXXn8VXr8l2YhlUEksOsFMSZpD",
+  user_id: "ZoMjT1C6sGnc3yCfldfO4wkctk9HvfJf",
   expiration_seconds: -1,
 });
 
 const db_client_ctx = new DBClientContext();
 const task_ctx = new TaskContext();
 const session_ctx = new SessionContext(task_ctx);
-const user_ctx = new UserContext(task_ctx, db_client_ctx);
+const user_ctx = new ConnContext(task_ctx, db_client_ctx);
 const peer_matching_ctx = new PeerMatchingContext(
   session_ctx,
   db_client_ctx,
