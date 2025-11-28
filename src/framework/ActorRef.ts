@@ -11,16 +11,16 @@ export class ActorRef<MessageType extends ActorMessage> {
   }
 
   public async send(message: MessageType): Promise<void> {
-    const ref = await this.context.get_actor(this.id);
-    ref.send(message);
+    const actor = await this.context.get_actor(this.id);
+    actor.send(message);
   }
 
   public async ask<ReplyType>(
     message: AskMessage<MessageType>,
     timeout_ms: number = 5000,
   ): Promise<ReplyType> {
-    const ref = await this.context.get_actor(this.id);
-    return await ref.ask<ReplyType>(message, timeout_ms);
+    const actor = await this.context.get_actor(this.id);
+    return await actor.ask<ReplyType>(message, timeout_ms);
   }
 
   // Get ref from same context to the same or different actor

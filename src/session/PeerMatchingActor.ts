@@ -1,11 +1,10 @@
-import moment from "moment";
 import { Actor } from "@/framework/Actor";
 import ActorContext from "../framework/ActorContext";
 import type { ActorRef } from "@/framework/ActorRef";
 import type { SessionContext, SessionMessage } from "./SessionActor";
 import { v7 as uuidv7, v4 } from "uuid";
-import type { UserContext } from "./UserActor";
 import { type DBClientContext } from "./DBClientActor";
+import type { ConnContext } from "./ConnActor";
 
 export type MatchingMessage =
   | {
@@ -30,21 +29,35 @@ type PeerMatchingClient = {
 
 export class PeerMatchingActor extends Actor<MatchingMessage> {
   private waitingClients: Map<string, PeerMatchingClient[]> = new Map();
+  private userToDuration: Map<string, string> = new Map();
+
   constructor(
     id: string,
     private session_ctx: SessionContext,
     private db_client_ctx: DBClientContext,
-    private user_ctx: UserContext,
+    private user_ctx: ConnContext,
   ) {
     super(id);
   }
+
   protected override async handleMessage(
     message: MatchingMessage,
   ): Promise<void> {
     switch (message.type) {
       case "MatchRequest": {
+        // Prevent duplicate entry
+        if (this.userToDuration.has(message.user_id)) {
+          message._reply?.(null);
+          return;
+        }
+
         const q = this.get_queue(message.duration);
         const other = q.shift();
+        if (other) {
+          // Remove the shifted user from the map
+          this.userToDuration.delete(other.user_id);
+        }
+
         if (!other) {
           q.push({
             _reply: message._reply,
@@ -52,10 +65,10 @@ export class PeerMatchingActor extends Actor<MatchingMessage> {
             tasks: message.tasks,
             user_id: message.user_id,
           });
+          this.userToDuration.set(message.user_id, message.duration);
           message._reply?.(null);
           return;
         }
-
         // Create a session
         console.log("Creating a session");
         const session = await this.create_session([
@@ -69,19 +82,18 @@ export class PeerMatchingActor extends Actor<MatchingMessage> {
         ]);
         message._reply?.(session);
         other._reply?.(session);
-
         break;
       }
       case "DisconnectUser": {
         let found = false;
-        for (const entry of this.waitingClients) {
-          const queue = entry[1];
+        const duration = this.userToDuration.get(message.user_id);
+        if (duration) {
+          const queue = this.get_queue(duration);
           const idx = queue.findIndex((cl) => cl.user_id == message.user_id);
-
           if (idx !== -1) {
             queue.splice(idx, 1);
+            this.userToDuration.delete(message.user_id);
             found = true;
-            break;
           }
         }
         message._reply?.(found);
@@ -92,12 +104,10 @@ export class PeerMatchingActor extends Actor<MatchingMessage> {
 
   private get_queue(duration: string) {
     let queue = this.waitingClients.get(duration);
-
     if (!queue) {
       queue = [];
       this.waitingClients.set(duration, queue);
     }
-
     return queue;
   }
 
@@ -108,7 +118,6 @@ export class PeerMatchingActor extends Actor<MatchingMessage> {
     await Promise.all(
       clients.map(async (cl) => {
         const user_ref = this.user_ctx.get_ref(cl.user_id);
-
         await session.send({
           type: "UserJoin",
           duration: cl.duration,
@@ -117,12 +126,10 @@ export class PeerMatchingActor extends Actor<MatchingMessage> {
         });
       }),
     );
-
     await session.send({
       type: "StartSession",
       client,
     });
-
     await client.send({ type: "Commit" });
     return session;
   }
@@ -134,10 +141,11 @@ export class PeerMatchingContext extends ActorContext<MatchingMessage> {
   constructor(
     private session_ctx: SessionContext,
     private db_client_ctx: DBClientContext,
-    private user_ctx: UserContext,
+    private user_ctx: ConnContext,
   ) {
     super();
   }
+
   protected override create_actor(id: string): Actor<MatchingMessage> {
     return new PeerMatchingActor(
       id,

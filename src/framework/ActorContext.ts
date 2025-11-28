@@ -54,6 +54,19 @@ export default abstract class ActorContext<MessageType extends ActorMessage> {
     return this.get_ref(id);
   }
 
+  public async stop(id: string) {
+    const actorPromise = this.actors.get(id);
+    if (!actorPromise) {
+      this.refs.delete(id); // delete the reference in case it exists
+      return;
+    }
+
+    const actor = await actorPromise;
+    actor.stop();
+    this.actors.delete(id);
+    this.refs.delete(id);
+  }
+
   private get_or_create_ref(id: string): ActorRef<MessageType> {
     let ref = this.refs.get(id);
     if (!ref) {

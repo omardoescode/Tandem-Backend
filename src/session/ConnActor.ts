@@ -10,7 +10,7 @@ import { v4 as uuid } from "uuid";
 import type { TaskContext } from "./TaskActor";
 import { ContextInitializationError } from "@/framework/Errors";
 
-export type UserMessage =
+export type ConnMessage =
   | {
       type: "WSConnected";
       ws_id: string;
@@ -20,12 +20,10 @@ export type UserMessage =
       type: "WSDisconnected";
       ws_id: string;
     }
-  | { type: "InjectPeerMatching"; ref: ActorRef<MatchingMessage> }
   | { type: "UserSendMessage"; content: SessionWsMessage }
-  | { type: "SendUserMessage"; content: SessionWsResponse }
-  | { type: "JoinSession"; session_ref: ActorRef<SessionMessage> };
+  | { type: "SendUserMessage"; content: SessionWsResponse };
 
-export class UserActor extends Actor<UserMessage> {
+export class ConnActor extends Actor<ConnMessage> {
   private session_ref: ActorRef<SessionMessage> | null = null;
   private connections = new Map<string, WSContext>();
 
@@ -38,11 +36,11 @@ export class UserActor extends Actor<UserMessage> {
     super(user_id);
   }
 
-  protected override async handleMessage(msg: UserMessage): Promise<void> {
+  protected override async handleMessage(msg: ConnMessage): Promise<void> {
     switch (msg.type) {
       case "WSConnected": {
         this.connections.set(msg.ws_id, msg.ws);
-        // TODO: Inform the message of the current session state
+        // TODO: Inform this websocket of the progress so far
         break;
       }
       case "WSDisconnected": {
@@ -54,10 +52,7 @@ export class UserActor extends Actor<UserMessage> {
           ws.send(JSON.stringify(msg.content));
         break;
       }
-      case "JoinSession": {
-        this.session_ref = msg.session_ref;
-        break;
-      }
+
       case "UserSendMessage": {
         await this.handleWSMessage(msg.content);
         break;
@@ -74,11 +69,14 @@ export class UserActor extends Actor<UserMessage> {
             type: "matching_pending",
           },
         });
-        this.peer_matching_ref.send({
+        await this.peer_matching_ref.send({
           type: "MatchRequest",
           duration: msg.focus_duration,
           tasks: msg.tasks,
           user_id: this.id,
+          _reply: (match) => {
+            if (match) this.session_ref = match;
+          },
         });
         break;
       }
@@ -103,10 +101,10 @@ export class UserActor extends Actor<UserMessage> {
       }
 
       case "toggle_task": {
-        const client = this.client_context.get_ref(uuid());
+        const client_id = uuid();
+        const client = this.client_context.get_ref(client_id);
         await client.send({ type: "Init" });
         const task_actor = this.task_context.get_ref(msg.task_id);
-        console.log("Setting a Set Message");
         await task_actor.send({
           type: "Set",
           db_client: client,
@@ -114,13 +112,14 @@ export class UserActor extends Actor<UserMessage> {
           user_id: this.id,
         });
         await client.send({ type: "Commit" });
+        await this.client_context.stop(client_id);
         break;
       }
     }
   }
 }
 
-export class UserContext extends ActorContext<UserMessage> {
+export class ConnContext extends ActorContext<ConnMessage> {
   public override actor_category: string = "exists";
   private peer_matching_ref: ActorRef<MatchingMessage> | null = null;
   constructor(
@@ -134,10 +133,10 @@ export class UserContext extends ActorContext<UserMessage> {
     this.peer_matching_ref = ref;
   }
 
-  protected override create_actor(id: string): Actor<UserMessage> {
+  protected override create_actor(id: string): Actor<ConnMessage> {
     if (!this.peer_matching_ref) throw new ContextInitializationError();
 
-    return new UserActor(
+    return new ConnActor(
       id,
       this.peer_matching_ref,
       this.task_context,
