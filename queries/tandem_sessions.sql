@@ -1,11 +1,14 @@
 -- name: createSession :one
-insert into tandem_session(scheduled_duration) values ($1) returning *;
+insert into tandem_session(session_id, scheduled_duration) values ($1, $2) returning *;
 
 -- name: createSessionParticipant :one
 insert into session_participant(session_id, user_id) values ($1, $2) returning *;
 
 -- name: createSessionTask :one
-insert into session_task(session_id, user_id, title) values ($1, $2, $3) returning *;
+insert into session_task(task_id, session_id, user_id, title) values ($1, $2, $3,$4) returning *;
+
+-- name: checkSessionTaskExists :one
+select 1 exists from session_task where session_id = $1 and user_id = $2;
 
 -- name: toggleSessionTask :exec
 update session_task set is_complete = $2 where task_id = $1 and user_id = $3; 
