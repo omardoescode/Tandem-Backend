@@ -4,13 +4,13 @@ import ActorContext from "@/framework/ActorContext";
 
 export type TicketManagerMessage =
   | {
-      type: "add_ticket";
+      type: "AddTicket";
       user_id: string;
       expiration_seconds: number;
       _reply?: (ticket_id: string) => Promise<void> | void;
     }
   | {
-      type: "use_ticket";
+      type: "UseTicket";
       ticket_id: string;
       _reply?: (user_id: string | null) => Promise<void> | void;
     };
@@ -23,7 +23,7 @@ export class TicketManagerActor extends Actor<TicketManagerMessage> {
     message: TicketManagerMessage,
   ): Promise<void> {
     switch (message.type) {
-      case "add_ticket": {
+      case "AddTicket": {
         const id = (this.ticket_id++).toString();
 
         const timeout =
@@ -34,13 +34,13 @@ export class TicketManagerActor extends Actor<TicketManagerMessage> {
                 // NOTE: Keep for development for now
               }, message.expiration_seconds * 1000);
 
-        this.tickets.set(id, [id, timeout]);
+        this.tickets.set(id, [message.user_id, timeout]);
 
         message._reply?.(id);
         break;
       }
 
-      case "use_ticket": {
+      case "UseTicket": {
         const tickets = this.tickets.get(message.ticket_id);
         if (tickets) {
           const [user_id, timeout] = tickets;
