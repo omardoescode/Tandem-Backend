@@ -1,7 +1,7 @@
 import moment from "moment";
 import { Actor } from "@/framework/Actor";
 import type { ActorRef } from "@/framework/ActorRef";
-import type { UserMessage } from "./UserActor";
+import type { ConnMessage } from "./ConnActor";
 import ActorContext from "../framework/ActorContext";
 import assert from "assert";
 import type { TaskContext } from "./TaskActor";
@@ -13,12 +13,12 @@ import interval from "postgres-interval";
 export type SessionMessage =
   | {
       type: "UserJoin";
-      user_ref: ActorRef<UserMessage>;
+      user_ref: ActorRef<ConnMessage>;
       duration: string;
       tasks: string[];
     }
   | { type: "StartSession"; client: ActorRef<DBClientMessage> }
-  | { type: "TimerExpired" }
+  | { type: "CheckInStart" }
   | { type: "UserDisconnected"; user_id: string }
   | { type: "UserChatMessage"; user_id: string; content: string }
   | { type: "SessionCheckInReport"; from_id: string; work_proved: boolean };
@@ -27,12 +27,13 @@ enum SessionState {
   JOINING,
   RUNNING,
   CHECKIN,
+  FINISHED,
 }
 
 export class SessionActor extends Actor<SessionMessage> {
   private state: SessionState = SessionState.JOINING;
   private timeout: Timer | null = null;
-  private users: { ref: ActorRef<UserMessage>; tasks: string[] }[] = [];
+  private users: { ref: ActorRef<ConnMessage>; tasks: string[] }[] = [];
   private duration: string | null = null;
 
   constructor(
@@ -53,6 +54,9 @@ export class SessionActor extends Actor<SessionMessage> {
         if (!this.users.some((u) => u.ref.id === message.user_ref.id))
           this.users.push({ ref: message.user_ref, tasks: message.tasks });
 
+        console.log(`Current user count: ${this.users.length}`);
+        console.log(this.users);
+
         break;
       case "StartSession": {
         console.log("StartSession received");
@@ -63,7 +67,7 @@ export class SessionActor extends Actor<SessionMessage> {
         const duration = moment.duration(this.duration, "seconds");
 
         this.timeout = setTimeout(() => {
-          this.send({ type: "TimerExpired" });
+          this.send({ type: "CheckInStart" });
         }, duration.asMilliseconds());
 
         this.state = SessionState.RUNNING;
@@ -120,7 +124,7 @@ export class SessionActor extends Actor<SessionMessage> {
         break;
       }
 
-      case "TimerExpired": {
+      case "CheckInStart": {
         const now = moment();
         const end = now.clone().add(2, "minute");
         this.users.forEach((u) =>
@@ -159,21 +163,28 @@ export class SessionActor extends Actor<SessionMessage> {
         break;
       }
       case "UserChatMessage":
+        console.log("did we make it here??");
+
         if (this.state !== SessionState.CHECKIN) {
-          console.warn(`User ${message.user_id} doesn't belong to session`);
+          console.warn(
+            `Session not in CHECKIN state; ignoring message from user ${message.user_id}`,
+          );
           return;
         }
 
-        this.users.forEach((u) => {
-          if (u.ref.id != message.user_id)
-            u.ref.send({
-              type: "SendUserMessage",
-              content: {
-                type: "checkin_partner_message",
-                content: message.content,
-              },
-            });
-        });
+        await Promise.all(
+          this.users.map(async (u) => {
+            console.log(u.ref.id, u.ref.id !== message.user_id);
+            if (u.ref.id !== message.user_id)
+              await u.ref.send({
+                type: "SendUserMessage",
+                content: {
+                  type: "checkin_partner_message",
+                  content: message.content,
+                },
+              });
+          }),
+        );
         break;
 
       case "SessionCheckInReport": {
