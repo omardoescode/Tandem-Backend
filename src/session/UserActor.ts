@@ -9,7 +9,6 @@ import type { DBClientContext } from "./DBClientActor";
 import { v4 as uuid } from "uuid";
 import type { TaskContext } from "./TaskActor";
 import { ContextInitializationError } from "@/framework/Errors";
-import { match } from "node_modules/hono/dist/types/router/reg-exp-router/matcher";
 
 export type UserMessage =
   | {
@@ -105,15 +104,16 @@ export class UserActor extends Actor<UserMessage> {
 
       case "toggle_task": {
         const client = this.client_context.get_ref(uuid());
-        client.send({ type: "Init" });
+        await client.send({ type: "Init" });
         const task_actor = this.task_context.get_ref(msg.task_id);
+        console.log("Setting a Set Message");
         await task_actor.send({
           type: "Set",
           db_client: client,
           value: msg.is_complete,
           user_id: this.id,
         });
-        client.send({ type: "Commit" });
+        await client.send({ type: "Commit" });
         break;
       }
     }

@@ -141,18 +141,20 @@ export async function checkSessionTaskExists(client: Client, args: checkSessionT
 }
 
 export const toggleSessionTaskQuery = `-- name: toggleSessionTask :exec
-update session_task set is_complete = $2 where task_id = $1 and user_id = $3`;
+update session_task
+set is_complete = $1::boolean
+where task_id = $2 and user_id = $3`;
 
 export interface toggleSessionTaskArgs {
+    isComplete: boolean;
     taskId: string;
-    isComplete: string | null;
     userId: string;
 }
 
 export async function toggleSessionTask(client: Client, args: toggleSessionTaskArgs): Promise<void> {
     await client.query({
         text: toggleSessionTaskQuery,
-        values: [args.taskId, args.isComplete, args.userId],
+        values: [args.isComplete, args.taskId, args.userId],
         rowMode: "array"
     });
 }
