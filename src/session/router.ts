@@ -2,20 +2,49 @@ import { protectedRoute } from "@/auth/middleware";
 import { SuccessResponse } from "@/utils/responses";
 import { Hono } from "hono";
 import { upgradeWebSocket } from "hono/bun";
-import { v7 as uuid } from "uuid";
 import { describeRoute } from "hono-openapi";
 import { SessionWSMessageSchema, type SessionWsMessage } from "./validation";
 import assert from "assert";
-import { ConnectionManager } from "./service";
+// import { ConnectionManager } from "./service_old";
+import { TicketManagerContext } from "./TicketManagerActor";
+import { UserContext } from "./UserActor";
+import { SessionContext } from "./SessionActor";
+import { TaskContext } from "./TaskActor";
+import { DBClientContext } from "./DBClientActor";
+import { PeerMatchingContext } from "./PeerMatchingActor";
+import { v4 } from "uuid";
 
 const sessionRouter = new Hono();
 
-// TODO: Replace with redis or postgres db
-// NOTE: These are just random stuff for development on my machine
-const tickets: Record<string, string> = {
-  "0": "gA7Qb61p2QfRs6ubn7xbV2tAx3Cs9HnA",
-  "1": "A5TvcNvIdWLJ11iS70MinlevGCBAAxgd",
-};
+const ticket_ctx = new TicketManagerContext();
+const ticket_ref = await ticket_ctx.spawn("ticket-manager-singleton");
+
+await ticket_ref.ask<string>({
+  type: "add_ticket",
+  user_id: "CLp1lNLXXn8VXr8l2YhlUEksOsFMSZpD",
+  expiration_seconds: -1,
+});
+
+await ticket_ref.ask<string>({
+  type: "add_ticket",
+  user_id: "CLp1lNLXXn8VXr8l2YhlUEksOsFMSZpD",
+  expiration_seconds: -1,
+});
+
+const db_client_ctx = new DBClientContext();
+const task_ctx = new TaskContext();
+const session_ctx = new SessionContext(task_ctx);
+const user_ctx = new UserContext(task_ctx, db_client_ctx);
+const peer_matching_ctx = new PeerMatchingContext(
+  session_ctx,
+  db_client_ctx,
+  user_ctx,
+);
+
+const peer_matching_ref = await peer_matching_ctx.spawn(
+  "peer-matching-singleton",
+);
+user_ctx.set_peer_matching_ref(peer_matching_ref);
 
 sessionRouter.get(
   "get_ticket",
@@ -33,10 +62,11 @@ sessionRouter.get(
   protectedRoute,
   async (c) => {
     const user = c.get("user");
-    const ticket = uuid();
-    tickets[ticket] = user.id;
-    console.log(tickets);
-
+    const ticket = await ticket_ref.ask<string>({
+      type: "add_ticket",
+      user_id: user.id,
+      expiration_seconds: 2 * 60,
+    });
     return c.json(SuccessResponse({ ticket }));
   },
 );
@@ -46,25 +76,39 @@ sessionRouter.get(
   describeRoute({
     description: "The entire peer-matching, session, and checkin endpoint",
   }),
-  upgradeWebSocket((c) => {
+  upgradeWebSocket(async (c) => {
     const ticket = c.req.query("ticket");
-    const user_id = ticket ? tickets[ticket] : null;
 
-    // TODO: Keep them for development
-    // if (ticket) delete tickets[ticket]; // One-time use
-
-    return {
-      onOpen(evt, ws) {
-        if (!user_id) {
-          ws.send(
-            JSON.stringify({
-              error: "invalid token",
-            }),
-          );
+    if (!ticket) {
+      return {
+        onOpen(_, ws) {
+          ws.send(JSON.stringify({ error: "unauthorized" }));
           ws.close();
-          return;
-        }
-        ConnectionManager.instance().initConn(ws, user_id);
+        },
+      };
+    }
+    const user_id = await ticket_ref.ask<string | null>({
+      type: "use_ticket",
+      ticket_id: ticket,
+    });
+
+    if (!user_id)
+      return {
+        onOpen(_, ws) {
+          ws.send(JSON.stringify({ error: "unauthorized" }));
+          ws.close();
+        },
+      };
+
+    const new_user = user_ctx.get_ref(user_id);
+    const ws_id = v4();
+    return {
+      onOpen(_, ws) {
+        new_user.send({
+          type: "WSConnected",
+          ws_id: ws_id,
+          ws,
+        });
       },
       async onMessage(event, ws) {
         assert(user_id);
@@ -84,20 +128,13 @@ sessionRouter.get(
         }
 
         assert(parsed !== null);
-
-        const res = await ConnectionManager.instance().handleMessage(
-          user_id,
-          parsed,
-        );
-        if (res) throw res;
+        new_user.send({ type: "UserSendMessage", content: parsed });
       },
-      async onClose(event, ws) {
-        assert(user_id);
+      async onClose() {
         console.log(`User ${user_id} disconnected.`);
-        const res = await ConnectionManager.instance().handleClose(user_id);
-        if (res) throw res;
+        new_user.send({ type: "WSDisconnected", ws_id });
       },
-      onError(event, ws) {
+      onError(event, _) {
         console.error(`WebSocket error for ${user_id}:`, event);
       },
     };

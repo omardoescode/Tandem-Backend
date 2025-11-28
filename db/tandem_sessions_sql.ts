@@ -7,9 +7,10 @@ interface Client {
 }
 
 export const createSessionQuery = `-- name: createSession :one
-insert into tandem_session(scheduled_duration) values ($1) returning session_id, status, start_time, scheduled_duration`;
+insert into tandem_session(session_id, scheduled_duration) values ($1, $2) returning session_id, status, start_time, scheduled_duration`;
 
 export interface createSessionArgs {
+    sessionId: string;
     scheduledDuration: IPostgresInterval;
 }
 
@@ -23,7 +24,7 @@ export interface createSessionRow {
 export async function createSession(client: Client, args: createSessionArgs): Promise<createSessionRow | null> {
     const result = await client.query({
         text: createSessionQuery,
-        values: [args.scheduledDuration],
+        values: [args.sessionId, args.scheduledDuration],
         rowMode: "array"
     });
     if (result.rows.length !== 1) {
@@ -74,9 +75,10 @@ export async function createSessionParticipant(client: Client, args: createSessi
 }
 
 export const createSessionTaskQuery = `-- name: createSessionTask :one
-insert into session_task(session_id, user_id, title) values ($1, $2, $3) returning task_id, session_id, user_id, title, is_complete, created_at`;
+insert into session_task(task_id, session_id, user_id, title) values ($1, $2, $3,$4) returning task_id, session_id, user_id, title, is_complete, created_at`;
 
 export interface createSessionTaskArgs {
+    taskId: string;
     sessionId: string;
     userId: string;
     title: string;
@@ -94,7 +96,7 @@ export interface createSessionTaskRow {
 export async function createSessionTask(client: Client, args: createSessionTaskArgs): Promise<createSessionTaskRow | null> {
     const result = await client.query({
         text: createSessionTaskQuery,
-        values: [args.sessionId, args.userId, args.title],
+        values: [args.taskId, args.sessionId, args.userId, args.title],
         rowMode: "array"
     });
     if (result.rows.length !== 1) {
@@ -108,6 +110,33 @@ export async function createSessionTask(client: Client, args: createSessionTaskA
         title: row[3],
         isComplete: row[4],
         createdAt: row[5]
+    };
+}
+
+export const checkSessionTaskExistsQuery = `-- name: checkSessionTaskExists :one
+select 1 exists from session_task where session_id = $1 and user_id = $2`;
+
+export interface checkSessionTaskExistsArgs {
+    sessionId: string;
+    userId: string;
+}
+
+export interface checkSessionTaskExistsRow {
+    exists: string;
+}
+
+export async function checkSessionTaskExists(client: Client, args: checkSessionTaskExistsArgs): Promise<checkSessionTaskExistsRow | null> {
+    const result = await client.query({
+        text: checkSessionTaskExistsQuery,
+        values: [args.sessionId, args.userId],
+        rowMode: "array"
+    });
+    if (result.rows.length !== 1) {
+        return null;
+    }
+    const row = result.rows[0];
+    return {
+        exists: row[0]
     };
 }
 

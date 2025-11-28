@@ -47,9 +47,11 @@ export const SessionWSResponseSchema = z.discriminatedUnion("type", [
     type: z.literal("other_used_disconnected"),
   }),
   z.object({
-    type: z.literal("matched"),
-    partner_id: z.string().nonempty(),
-    partner_tasks: z.array(z.string().nonempty()).min(1),
+    type: z.literal("start_session"),
+    partners: {
+      id: z.string().nonempty(),
+      tasks: z.array(z.string().nonempty()).min(1),
+    },
     tasks: z.array(
       z.object({
         title: z.string().nonempty(),
