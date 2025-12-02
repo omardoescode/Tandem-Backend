@@ -5,7 +5,6 @@ import { upgradeWebSocket } from "hono/bun";
 import { describeRoute } from "hono-openapi";
 import { SessionWSMessageSchema, type SessionWsMessage } from "./validation";
 import assert from "assert";
-// import { ConnectionManager } from "./service_old";
 import { TicketManagerContext } from "./TicketManagerActor";
 import { ConnContext } from "./ConnActor";
 import { SessionContext } from "./SessionActor";
@@ -18,18 +17,6 @@ const sessionRouter = new Hono();
 
 const ticket_ctx = new TicketManagerContext();
 const ticket_ref = await ticket_ctx.spawn("ticket-manager-singleton");
-
-await ticket_ref.ask<string>({
-  type: "AddTicket",
-  user_id: "CLp1lNLXXn8VXr8l2YhlUEksOsFMSZpD",
-  expiration_seconds: -1,
-});
-
-await ticket_ref.ask<string>({
-  type: "AddTicket",
-  user_id: "ZoMjT1C6sGnc3yCfldfO4wkctk9HvfJf",
-  expiration_seconds: -1,
-});
 
 const db_client_ctx = new DBClientContext();
 const task_ctx = new TaskContext();

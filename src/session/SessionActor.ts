@@ -7,7 +7,7 @@ import assert from "assert";
 import type { TaskContext } from "./TaskActor";
 import { v7 } from "uuid";
 import { ExecuteMessage, type DBClientMessage } from "./DBClientActor";
-import { createSession } from "db/tandem_sessions_sql";
+import { createCheckInReport, createSession } from "db/tandem_sessions_sql";
 import interval from "postgres-interval";
 
 export type SessionMessage =
@@ -20,18 +20,28 @@ export type SessionMessage =
   | { type: "StartSession"; client: ActorRef<DBClientMessage> }
   | { type: "CheckInStart" }
   | { type: "UserDisconnected"; user_id: string }
-  | { type: "UserChatMessage"; user_id: string; content: string }
-  | { type: "SessionCheckInReport"; from_id: string; work_proved: boolean };
+  | {
+      type: "UserChatMessage";
+      user_id: string;
+      content: string;
+      client: ActorRef<DBClientMessage>;
+    }
+  | {
+      type: "SessionCheckInReport";
+      from_id: string;
+      to_id: string;
+      work_proved: boolean;
+      client: ActorRef<DBClientMessage>;
+    };
 
-enum SessionState {
-  JOINING,
-  RUNNING,
-  CHECKIN,
-  FINISHED,
-}
+type SessionState =
+  | { type: "joining" }
+  | { type: "running" }
+  | { type: "checkin"; checkin_count: number }
+  | { type: "finished" };
 
 export class SessionActor extends Actor<SessionMessage> {
-  private state: SessionState = SessionState.JOINING;
+  private state: SessionState = { type: "joining" };
   private timeout: Timer | null = null;
   private users: { ref: ActorRef<ConnMessage>; tasks: string[] }[] = [];
   private duration: string | null = null;
@@ -60,7 +70,7 @@ export class SessionActor extends Actor<SessionMessage> {
         break;
       case "StartSession": {
         console.log("StartSession received");
-        if (this.state !== SessionState.JOINING) return;
+        if (this.state.type !== "joining") return;
         assert(this.users.length !== 0 && this.duration !== null);
 
         const start_time = moment();
@@ -70,7 +80,7 @@ export class SessionActor extends Actor<SessionMessage> {
           this.send({ type: "CheckInStart" });
         }, duration.asMilliseconds());
 
-        this.state = SessionState.RUNNING;
+        this.state = { type: "running" };
 
         await message.client.send(
           ExecuteMessage(createSession, {
@@ -138,7 +148,7 @@ export class SessionActor extends Actor<SessionMessage> {
           }),
         );
         this.timeout = null;
-        this.state = SessionState.CHECKIN;
+        this.state = { type: "checkin", checkin_count: 0 };
         break;
       }
 
@@ -163,9 +173,7 @@ export class SessionActor extends Actor<SessionMessage> {
         break;
       }
       case "UserChatMessage":
-        console.log("did we make it here??");
-
-        if (this.state !== SessionState.CHECKIN) {
+        if (this.state.type !== "checkin") {
           console.warn(
             `Session not in CHECKIN state; ignoring message from user ${message.user_id}`,
           );
@@ -188,16 +196,48 @@ export class SessionActor extends Actor<SessionMessage> {
         break;
 
       case "SessionCheckInReport": {
-        this.users.forEach((u) => {
-          if (u.ref.id !== message.from_id)
-            u.ref.send({
-              type: "SendUserMessage",
-              content: {
-                type: "checkin_report_sent",
-                work_proved: message.work_proved,
-              },
-            });
-        });
+        if (this.state.type !== "checkin") {
+          console.warn(
+            `Session not in CHECKIN state; ignoring checkin report from ${message.from_id}`,
+          );
+          return;
+        }
+
+        await message.client.send(
+          ExecuteMessage(createCheckInReport, {
+            sessionId: this.id,
+            revieweeId: message.from_id,
+            reviewerId: message.to_id,
+            workProved: message.work_proved,
+          }),
+        );
+
+        await Promise.all(
+          this.users.map(async (u) => {
+            if (u.ref.id !== message.from_id)
+              await u.ref.send({
+                type: "SendUserMessage",
+                content: {
+                  type: "checkin_report_sent",
+                  work_proved: message.work_proved,
+                },
+              });
+          }),
+        );
+
+        this.state.checkin_count++;
+
+        if (this.state.checkin_count === this.users.length) {
+          this.state = { type: "finished" };
+
+          await Promise.all(
+            this.users.map(async (u) => {
+              u.ref.send({
+                type: "SessionOver",
+              });
+            }),
+          );
+        }
       }
     }
   }
