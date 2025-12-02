@@ -219,12 +219,18 @@ export async function abortSession(client: Client, args: abortSessionArgs): Prom
 }
 
 export const createCheckInReportQuery = `-- name: createCheckInReport :exec
-insert into checkin(session_id, reviewer_id, work_proved, reviewee_id) values ($1, $2, $3, $4)`;
+INSERT INTO checkin(session_id, reviewer_id, work_proved, reviewee_id)
+VALUES (
+  $1,
+  $2,
+  $3::boolean,
+  $4
+)`;
 
 export interface createCheckInReportArgs {
     sessionId: string;
     reviewerId: string;
-    workProved: string;
+    workProved: boolean;
     revieweeId: string;
 }
 
