@@ -36,8 +36,8 @@ export function ExecuteMessage<
 }
 export class DBClientActor extends Actor<DBClientMessage> {
   private client: PoolClient | null = null;
-  constructor(id: string) {
-    super(id);
+  constructor(id: string, context: ActorContext<DBClientMessage>) {
+    super(context, id);
   }
 
   protected override async handleMessage(

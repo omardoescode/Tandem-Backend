@@ -48,9 +48,10 @@ export class SessionActor extends Actor<SessionMessage> {
 
   constructor(
     session_id: string,
+    context: ActorContext<SessionMessage>,
     private task_ctx: TaskContext,
   ) {
-    super(session_id);
+    super(context, session_id);
   }
 
   protected override async handleMessage(
@@ -237,6 +238,8 @@ export class SessionActor extends Actor<SessionMessage> {
               });
             }),
           );
+
+          await this.context.delete(this.id);
         }
       }
     }
@@ -249,7 +252,8 @@ export class SessionContext extends ActorContext<SessionMessage> {
   constructor(private task_context: TaskContext) {
     super();
   }
+
   protected override create_actor(id: string): Actor<SessionMessage> {
-    return new SessionActor(id, this.task_context);
+    return new SessionActor(id, this, this.task_context);
   }
 }

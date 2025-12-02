@@ -18,6 +18,10 @@ export class TicketManagerActor extends Actor<TicketManagerMessage> {
   private tickets: Map<string, [string, NodeJS.Timeout | null]> = new Map();
   private ticket_id: number = 0;
 
+  constructor(id: string, context: ActorContext<TicketManagerMessage>) {
+    super(context, id);
+  }
+
   protected override async handleMessage(
     message: TicketManagerMessage,
   ): Promise<void> {
@@ -57,7 +61,7 @@ export class TicketManagerActor extends Actor<TicketManagerMessage> {
 export class TicketManagerContext extends ActorContext<TicketManagerMessage> {
   public override actor_category: string = "task_manager";
   protected override create_actor(id: string): Actor<TicketManagerMessage> {
-    const res = new TicketManagerActor(id);
+    const res = new TicketManagerActor(id, this);
     return res;
   }
 }

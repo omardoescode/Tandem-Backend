@@ -20,8 +20,8 @@ export type TaskMessage =
     };
 
 export class TaskActor extends Actor<TaskMessage> {
-  constructor(id: string) {
-    super(id);
+  constructor(id: string, context: ActorContext<TaskMessage>) {
+    super(context, id);
   }
 
   protected override async handleMessage(message: TaskMessage): Promise<void> {
@@ -59,6 +59,6 @@ export class TaskContext extends ActorContext<TaskMessage> {
   }
 
   protected override create_actor(id: string): Actor<TaskMessage> {
-    return new TaskActor(id);
+    return new TaskActor(id, this);
   }
 }

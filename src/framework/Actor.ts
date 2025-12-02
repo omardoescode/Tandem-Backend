@@ -3,10 +3,11 @@
 import type { UnionOmit } from "@/types";
 import { v4 as uuid } from "uuid";
 import { AskTimeout } from "./Errors";
+import type ActorContext from "./ActorContext";
 
-export type ActorMessage = {
+export interface ActorMessage {
   type: `${string}`;
-};
+}
 
 export type AskMessage<Msg extends ActorMessage> = UnionOmit<Msg, "_reply">;
 
@@ -16,7 +17,10 @@ export abstract class Actor<MessageType extends ActorMessage> {
   private running: boolean = false;
   private processing: boolean = false;
 
-  constructor(id?: string) {
+  constructor(
+    protected context: ActorContext<MessageType>,
+    id?: string,
+  ) {
     this.id = id ?? uuid();
   }
 
@@ -40,12 +44,11 @@ export abstract class Actor<MessageType extends ActorMessage> {
         },
       };
 
-      this.send(messageWithReply as unknown as MessageType);
+      this.send(messageWithReply as MessageType);
     });
   }
 
   public start() {
-    console.log(`Start actor ${this.id}`);
     this.running = true;
     this.schedule();
   }

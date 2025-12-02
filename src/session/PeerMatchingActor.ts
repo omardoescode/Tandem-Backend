@@ -33,11 +33,12 @@ export class PeerMatchingActor extends Actor<MatchingMessage> {
 
   constructor(
     id: string,
+    context: ActorContext<MatchingMessage>,
     private session_ctx: SessionContext,
     private db_client_ctx: DBClientContext,
     private user_ctx: ConnContext,
   ) {
-    super(id);
+    super(context, id);
   }
 
   protected override async handleMessage(
@@ -149,6 +150,7 @@ export class PeerMatchingContext extends ActorContext<MatchingMessage> {
   protected override create_actor(id: string): Actor<MatchingMessage> {
     return new PeerMatchingActor(
       id,
+      this,
       this.session_ctx,
       this.db_client_ctx,
       this.user_ctx,

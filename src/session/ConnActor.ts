@@ -30,22 +30,31 @@ export class ConnActor extends Actor<ConnMessage> {
 
   constructor(
     user_id: string,
+    context: ActorContext<ConnMessage>,
     private peer_matching_ref: ActorRef<MatchingMessage>,
     private task_context: TaskContext,
     private client_context: DBClientContext,
   ) {
-    super(user_id);
+    super(context, user_id);
   }
 
   protected override async handleMessage(msg: ConnMessage): Promise<void> {
     switch (msg.type) {
       case "WSConnected": {
         this.connections.set(msg.ws_id, msg.ws);
-        // TODO: Inform this websocket of the progress so far
+        if (this.session_ref) {
+          console.log("hello");
+        }
         break;
       }
       case "WSDisconnected": {
         this.connections.delete(msg.ws_id);
+        if (this.session_ref) {
+          this.session_ref.send({
+            type: "UserDisconnected",
+            user_id: this.id,
+          });
+        }
         break;
       }
       case "SendUserMessage": {
@@ -105,7 +114,7 @@ export class ConnActor extends Actor<ConnMessage> {
         });
 
         await client.send({ type: "Commit" });
-        await this.client_context.stop(client_id);
+        await this.client_context.delete(client_id);
         break;
       }
 
@@ -122,7 +131,7 @@ export class ConnActor extends Actor<ConnMessage> {
           client,
         });
         await client.send({ type: "Commit" });
-        await this.client_context.stop(client_id);
+        await this.client_context.delete(client_id);
         break;
       }
 
@@ -138,7 +147,7 @@ export class ConnActor extends Actor<ConnMessage> {
           user_id: this.id,
         });
         await client.send({ type: "Commit" });
-        await this.client_context.stop(client_id);
+        await this.client_context.delete(client_id);
         break;
       }
     }
@@ -164,6 +173,7 @@ export class ConnContext extends ActorContext<ConnMessage> {
 
     return new ConnActor(
       id,
+      this,
       this.peer_matching_ref,
       this.task_context,
       this.client_context,
