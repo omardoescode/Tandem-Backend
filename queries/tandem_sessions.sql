@@ -1,14 +1,19 @@
 -- name: createSession :one
-insert into tandem_session(scheduled_duration) values ($1) returning *;
+insert into tandem_session(session_id, scheduled_duration) values ($1, $2) returning *;
 
 -- name: createSessionParticipant :one
 insert into session_participant(session_id, user_id) values ($1, $2) returning *;
 
 -- name: createSessionTask :one
-insert into session_task(session_id, user_id, title) values ($1, $2, $3) returning *;
+insert into session_task(task_id, session_id, user_id, title) values ($1, $2, $3,$4) returning *;
+
+-- name: checkSessionTaskExists :one
+select 1 exists from session_task where session_id = $1 and user_id = $2;
 
 -- name: toggleSessionTask :exec
-update session_task set is_complete = $2 where task_id = $1 and user_id = $3; 
+update session_task
+set is_complete = sqlc.arg(is_complete)::boolean
+where task_id = sqlc.arg(task_id) and user_id = sqlc.arg(user_id);
 
 -- name: getCompletedSessionsForCheckIn :many
 select ts.session_id, start_time, scheduled_duration, user_id
@@ -23,7 +28,13 @@ update tandem_session set status = 'checkin' where session_id = any($1);
 update tandem_session set status = 'disconnected' where session_id = any($1);
 
 -- name: createCheckInReport :exec
-insert into checkin(session_id, reviewer_id, work_proved, reviewee_id) values ($1, $2, $3, $4);
+INSERT INTO checkin(session_id, reviewer_id, work_proved, reviewee_id)
+VALUES (
+  sqlc.arg(session_id),
+  sqlc.arg(reviewer_id),
+  sqlc.arg(work_proved)::boolean,
+  sqlc.arg(reviewee_id)
+);
 
 -- name: checkSessionDone :one
 select count(distinct reviewer_id) = 2 done from checkin where session_id = $1;
