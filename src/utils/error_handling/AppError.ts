@@ -1,10 +1,11 @@
 import type { Context } from "hono";
-import type { StatusCode } from "hono/utils/http-status";
 import { ErrorResponse } from "@/utils/responses";
 import { StatusCodes } from "http-status-codes";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
 
+type StatusCodeType = ContentfulStatusCode | undefined;
 export default class AppError extends Error {
-  private status: StatusCode;
+  private status: StatusCodeType;
   private isOperational: boolean;
   private details?: unknown;
 
@@ -16,7 +17,7 @@ export default class AppError extends Error {
     cause,
   }: {
     message: string;
-    status?: StatusCode;
+    status?: StatusCodeType;
     isOperational?: boolean;
     details?: unknown;
     cause?: Error;

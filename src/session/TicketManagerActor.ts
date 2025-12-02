@@ -1,5 +1,4 @@
 import { Actor } from "@/framework/Actor";
-import { v4 as uuid } from "uuid";
 import ActorContext from "@/framework/ActorContext";
 
 export type TicketManagerMessage =
@@ -30,8 +29,7 @@ export class TicketManagerActor extends Actor<TicketManagerMessage> {
           message.expiration_seconds === -1
             ? null
             : setTimeout(() => {
-                // this.tickets.delete(id);
-                // NOTE: Keep for development for now
+                this.tickets.delete(id);
               }, message.expiration_seconds * 1000);
 
         this.tickets.set(id, [message.user_id, timeout]);
@@ -44,8 +42,8 @@ export class TicketManagerActor extends Actor<TicketManagerMessage> {
         const tickets = this.tickets.get(message.ticket_id);
         if (tickets) {
           const [user_id, timeout] = tickets;
-          // if (timeout) clearTimeout(timeout);
-          // this.tickets.delete(message.ticket_id);
+          if (timeout) clearTimeout(timeout);
+          this.tickets.delete(message.ticket_id);
           message._reply?.(user_id);
         } else {
           message._reply?.(null);

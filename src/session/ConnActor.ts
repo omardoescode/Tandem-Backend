@@ -21,7 +21,8 @@ export type ConnMessage =
       ws_id: string;
     }
   | { type: "UserSendMessage"; content: SessionWsMessage }
-  | { type: "SendUserMessage"; content: SessionWsResponse };
+  | { type: "SendUserMessage"; content: SessionWsResponse }
+  | { type: "SessionOver" };
 
 export class ConnActor extends Actor<ConnMessage> {
   private session_ref: ActorRef<SessionMessage> | null = null;
@@ -57,6 +58,15 @@ export class ConnActor extends Actor<ConnMessage> {
         await this.handleWSMessage(msg.content);
         break;
       }
+
+      case "SessionOver": {
+        for (const ws of this.connections.values()) {
+          ws.send(
+            JSON.stringify({ type: "session_done" } as SessionWsResponse),
+          );
+          ws.close();
+        }
+      }
     }
   }
 
@@ -82,21 +92,37 @@ export class ConnActor extends Actor<ConnMessage> {
       }
       case "checkin_report": {
         if (!this.session_ref) return;
+
+        const client_id = uuid();
+        const client = this.client_context.get_ref(client_id);
+        await client.send({ type: "Init" });
         this.session_ref.send({
           type: "SessionCheckInReport",
           work_proved: msg.work_proved,
           from_id: this.id,
+          to_id: msg.reviewee_id,
+          client,
         });
+
+        await client.send({ type: "Commit" });
+        await this.client_context.stop(client_id);
         break;
       }
 
       case "checkin_message": {
         if (!this.session_ref) return;
+
+        const client_id = uuid();
+        const client = this.client_context.get_ref(client_id);
+        await client.send({ type: "Init" });
         this.session_ref.send({
           type: "UserChatMessage",
           user_id: this.id,
           content: msg.content,
+          client,
         });
+        await client.send({ type: "Commit" });
+        await this.client_context.stop(client_id);
         break;
       }
 
