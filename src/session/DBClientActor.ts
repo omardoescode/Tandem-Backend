@@ -1,12 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import type { PoolClient, QueryArrayConfig, QueryArrayResult } from "pg";
+import type { PoolClient } from "pg";
 import { Actor } from "@/framework/Actor";
 import pool from "@/db/pool";
 import ActorContext from "@/framework/ActorContext";
-
-interface Client {
-  query: (config: QueryArrayConfig) => Promise<QueryArrayResult>;
-}
+import { type Client } from "@/types";
 
 export type DBClientMessage =
   | { type: "Init" }
@@ -34,6 +31,7 @@ export function ExecuteMessage<
     _reply,
   };
 }
+
 export class DBClientActor extends Actor<DBClientMessage> {
   private client: PoolClient | null = null;
   constructor(id: string, context: ActorContext<DBClientMessage>) {
@@ -48,6 +46,7 @@ export class DBClientActor extends Actor<DBClientMessage> {
         if (this.client) return;
         this.client = await pool.connect();
         await this.client.query("begin");
+        console.log("Initialization");
         break;
 
       case "Execute":
@@ -57,6 +56,7 @@ export class DBClientActor extends Actor<DBClientMessage> {
 
             // TODO: I think in case o fan error, an actor should throw an error, but the process should just stop this, and waiting to manual restart??
           }
+          console.log("Execution");
           const result = await message.fn(this.client, message.arg);
           message._reply?.(result);
         }
@@ -71,6 +71,7 @@ export class DBClientActor extends Actor<DBClientMessage> {
           return;
         }
 
+        console.log("Commit");
         console.log("About to commit");
         await this.client.query("commit");
         console.log("this committed");

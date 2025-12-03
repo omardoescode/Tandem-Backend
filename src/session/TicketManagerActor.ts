@@ -1,7 +1,7 @@
 import { Actor } from "@/framework/Actor";
 import ActorContext from "@/framework/ActorContext";
 
-export type TicketManagerMessage =
+export type TicketMessage =
   | {
       type: "AddTicket";
       user_id: string;
@@ -14,16 +14,16 @@ export type TicketManagerMessage =
       _reply?: (user_id: string | null) => Promise<void> | void;
     };
 
-export class TicketManagerActor extends Actor<TicketManagerMessage> {
+export class TicketManagerActor extends Actor<TicketMessage> {
   private tickets: Map<string, [string, NodeJS.Timeout | null]> = new Map();
   private ticket_id: number = 0;
 
-  constructor(id: string, context: ActorContext<TicketManagerMessage>) {
+  constructor(id: string, context: ActorContext<TicketMessage>) {
     super(context, id);
   }
 
   protected override async handleMessage(
-    message: TicketManagerMessage,
+    message: TicketMessage,
   ): Promise<void> {
     switch (message.type) {
       case "AddTicket": {
@@ -33,7 +33,7 @@ export class TicketManagerActor extends Actor<TicketManagerMessage> {
           message.expiration_seconds === -1
             ? null
             : setTimeout(() => {
-                this.tickets.delete(id);
+                // this.tickets.delete(id);
               }, message.expiration_seconds * 1000);
 
         this.tickets.set(id, [message.user_id, timeout]);
@@ -46,8 +46,8 @@ export class TicketManagerActor extends Actor<TicketManagerMessage> {
         const tickets = this.tickets.get(message.ticket_id);
         if (tickets) {
           const [user_id, timeout] = tickets;
-          if (timeout) clearTimeout(timeout);
-          this.tickets.delete(message.ticket_id);
+          // if (timeout) clearTimeout(timeout);
+          // this.tickets.delete(message.ticket_id);
           message._reply?.(user_id);
         } else {
           message._reply?.(null);
@@ -58,9 +58,9 @@ export class TicketManagerActor extends Actor<TicketManagerMessage> {
   }
 }
 
-export class TicketManagerContext extends ActorContext<TicketManagerMessage> {
-  public override actor_category: string = "task_manager";
-  protected override create_actor(id: string): Actor<TicketManagerMessage> {
+export class TicketManagerContext extends ActorContext<TicketMessage> {
+  public override actor_category: string = "ticket_manager";
+  protected override create_actor(id: string): Actor<TicketMessage> {
     const res = new TicketManagerActor(id, this);
     return res;
   }

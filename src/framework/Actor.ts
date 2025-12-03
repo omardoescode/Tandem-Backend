@@ -24,8 +24,8 @@ export abstract class Actor<MessageType extends ActorMessage> {
     this.id = id ?? uuid();
   }
 
-  public send(message: MessageType) {
-    this.mailbox.push(message);
+  public send(...messages: MessageType[]) {
+    this.mailbox.push(...messages);
     this.schedule();
   }
 

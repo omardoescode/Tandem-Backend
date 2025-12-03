@@ -18,6 +18,18 @@ const sessionRouter = new Hono();
 const ticket_ctx = new TicketManagerContext();
 const ticket_ref = await ticket_ctx.spawn("ticket-manager-singleton");
 
+ticket_ref.send({
+  type: "AddTicket",
+  user_id: "CLp1lNLXXn8VXr8l2YhlUEksOsFMSZpD",
+  expiration_seconds: -1,
+});
+
+ticket_ref.send({
+  type: "AddTicket",
+  user_id: "ZoMjT1C6sGnc3yCfldfO4wkctk9HvfJf",
+  expiration_seconds: -1,
+});
+
 const db_client_ctx = new DBClientContext();
 const task_ctx = new TaskContext();
 const session_ctx = new SessionContext(task_ctx);

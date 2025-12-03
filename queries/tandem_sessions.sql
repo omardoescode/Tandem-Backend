@@ -30,11 +30,21 @@ update tandem_session set status = 'disconnected' where session_id = any($1);
 -- name: createCheckInReport :exec
 INSERT INTO checkin(session_id, reviewer_id, work_proved, reviewee_id)
 VALUES (
-  sqlc.arg(session_id),
-  sqlc.arg(reviewer_id),
-  sqlc.arg(work_proved)::boolean,
-  sqlc.arg(reviewee_id)
+  @session_id,
+  @reviewer_id,
+  @work_proved::boolean,
+  @reviewee_id
 );
 
 -- name: checkSessionDone :one
 select count(distinct reviewer_id) = 2 done from checkin where session_id = $1;
+
+-- name: getSessionTask :one
+select task_id as id, session_id, user_id, title, is_complete::boolean, created_at from session_task where task_id = sqlc.arg(id);
+
+-- name: persistSessionTask :exec
+update session_task
+set
+  title =  coalesce(sqlc.narg('title'), title),
+  is_complete = coalesce(sqlc.narg('is_complete')::boolean, is_complete)
+where task_id = sqlc.arg(id);

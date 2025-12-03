@@ -42,9 +42,6 @@ export class ConnActor extends Actor<ConnMessage> {
     switch (msg.type) {
       case "WSConnected": {
         this.connections.set(msg.ws_id, msg.ws);
-        if (this.session_ref) {
-          console.log("hello");
-        }
         break;
       }
       case "WSDisconnected": {
@@ -101,7 +98,6 @@ export class ConnActor extends Actor<ConnMessage> {
       }
       case "checkin_report": {
         if (!this.session_ref) return;
-
         const client_id = uuid();
         const client = this.client_context.get_ref(client_id);
         await client.send({ type: "Init" });
@@ -136,16 +132,21 @@ export class ConnActor extends Actor<ConnMessage> {
       }
 
       case "toggle_task": {
+        console.log("are we here to begin with?");
         const client_id = uuid();
         const client = this.client_context.get_ref(client_id);
         await client.send({ type: "Init" });
         const task_actor = this.task_context.get_ref(msg.task_id);
-        await task_actor.send({
-          type: "Set",
-          db_client: client,
-          value: msg.is_complete,
-          user_id: this.id,
-        });
+        await task_actor.send(
+          {
+            type: "toggle",
+            is_complete: msg.is_complete,
+          },
+          {
+            type: "persist",
+            client,
+          },
+        );
         await client.send({ type: "Commit" });
         await this.client_context.delete(client_id);
         break;

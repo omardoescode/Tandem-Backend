@@ -1,64 +1,47 @@
-import { createSessionTask, toggleSessionTask } from "db/tandem_sessions_sql";
-import { Actor } from "@/framework/Actor";
-import { ExecuteMessage, type DBClientMessage } from "./DBClientActor";
-import type { ActorRef } from "@/framework/ActorRef";
-import ActorContext from "@/framework/ActorContext";
+import type { Actor } from "@/framework/Actor";
+import {
+  PersistantActor,
+  PersistentContext,
+  type BaseState,
+  type PersistenceMessage,
+} from "@/framework/PersistentActor";
+import { getSessionTask, persistSessionTask } from "db/tandem_sessions_sql";
 
-export type TaskMessage =
-  | {
-      type: "Set";
-      value: boolean;
-      db_client: ActorRef<DBClientMessage>;
-      user_id: string;
-    }
-  | {
-      type: "Create";
-      task: string;
-      user_id: string;
-      session_id: string;
-      db_client: ActorRef<DBClientMessage>;
-    };
+interface TaskState extends BaseState {
+  sessionId: string;
+  userId: string;
+  title: string;
+  isComplete: boolean;
+  createdAt: Date;
+}
 
-export class TaskActor extends Actor<TaskMessage> {
-  constructor(id: string, context: ActorContext<TaskMessage>) {
-    super(context, id);
-  }
+type TaskMessage = { type: "toggle"; is_complete: boolean };
 
+export class TaskActor extends PersistantActor<TaskMessage, TaskState> {
   protected override async handleMessage(message: TaskMessage): Promise<void> {
     switch (message.type) {
-      case "Create": {
-        message.db_client.send(
-          ExecuteMessage(createSessionTask, {
-            taskId: this.id,
-            sessionId: message.session_id,
-            userId: message.user_id,
-            title: message.task,
-          }),
-        );
+      case "toggle":
+        if (!this.state) return;
+        this.state.isComplete = message.is_complete;
         break;
-      }
-      case "Set": {
-        console.log("In set command");
-        message.db_client.send(
-          ExecuteMessage(toggleSessionTask, {
-            isComplete: message.value,
-            taskId: this.id,
-            userId: message.user_id,
-          }),
-        );
-        break;
-      }
+      default:
+        super.handleMessage(message);
     }
   }
 }
 
-export class TaskContext extends ActorContext<TaskMessage> {
+export class TaskContext extends PersistentContext<TaskMessage, TaskState> {
   public override actor_category: string = "task";
   constructor() {
-    super();
+    super({
+      persist: persistSessionTask,
+      get: getSessionTask,
+    });
   }
 
-  protected override create_actor(id: string): Actor<TaskMessage> {
+  protected override create_actor(
+    id: string,
+  ): Actor<TaskMessage | PersistenceMessage> {
     return new TaskActor(id, this);
   }
 }

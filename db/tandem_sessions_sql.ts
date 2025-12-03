@@ -89,7 +89,7 @@ export interface createSessionTaskRow {
     sessionId: string;
     userId: string;
     title: string;
-    isComplete: boolean | null;
+    isComplete: boolean;
     createdAt: Date;
 }
 
@@ -266,5 +266,62 @@ export async function checkSessionDone(client: Client, args: checkSessionDoneArg
     return {
         done: row[0]
     };
+}
+
+export const getSessionTaskQuery = `-- name: getSessionTask :one
+select task_id as id, session_id, user_id, title, is_complete::boolean, created_at from session_task where task_id = $1`;
+
+export interface getSessionTaskArgs {
+    id: string;
+}
+
+export interface getSessionTaskRow {
+    id: string;
+    sessionId: string;
+    userId: string;
+    title: string;
+    isComplete: boolean;
+    createdAt: Date;
+}
+
+export async function getSessionTask(client: Client, args: getSessionTaskArgs): Promise<getSessionTaskRow | null> {
+    const result = await client.query({
+        text: getSessionTaskQuery,
+        values: [args.id],
+        rowMode: "array"
+    });
+    if (result.rows.length !== 1) {
+        return null;
+    }
+    const row = result.rows[0];
+    return {
+        id: row[0],
+        sessionId: row[1],
+        userId: row[2],
+        title: row[3],
+        isComplete: row[4],
+        createdAt: row[5]
+    };
+}
+
+export const persistSessionTaskQuery = `-- name: persistSessionTask :exec
+update session_task
+set
+  title =  coalesce($1, title),
+  is_complete = coalesce($2::boolean, is_complete)
+where task_id = $3`;
+
+export interface persistSessionTaskArgs {
+    title: string | null;
+    isComplete: boolean | null;
+    id: string;
+}
+
+export async function persistSessionTask(client: Client, args: persistSessionTaskArgs): Promise<void> {
+    await client.query({
+        text: persistSessionTaskQuery,
+        values: [args.title, args.isComplete, args.id],
+        rowMode: "array"
+    });
 }
 

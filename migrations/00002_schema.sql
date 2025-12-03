@@ -19,7 +19,7 @@ create table session_task (
   session_id uuid not null references tandem_session(session_id),
   user_id text not null references "user"(id) on delete cascade,
   title varchar(500) not null,
-  is_complete boolean default false,
+  is_complete boolean default false not null,
   created_at timestamptz not null default now()
 );
 

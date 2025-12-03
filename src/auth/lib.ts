@@ -8,6 +8,11 @@ const auth = betterAuth({
   },
   database: pool,
   plugins: [openAPI()],
+  user: {
+    deleteUser: {
+      enabled: true,
+    },
+  },
 });
 
 export default auth;

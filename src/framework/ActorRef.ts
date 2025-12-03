@@ -10,9 +10,9 @@ export class ActorRef<MessageType extends ActorMessage> {
     this.id = id;
   }
 
-  public async send(message: MessageType): Promise<void> {
+  public async send(...messages: MessageType[]): Promise<void> {
     const actor = await this.context.get_actor(this.id);
-    actor.send(message);
+    actor.send(...messages);
   }
 
   public async ask<ReplyType>(
