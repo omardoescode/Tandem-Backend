@@ -34,6 +34,11 @@ describe("Session Complete Test", () => {
   }
 
   const users = [generateRandomUser(), generateRandomUser()];
+
+  const tasks = [
+    [`task ${randomStr()}`, `task ${randomStr()}`],
+    [`task ${randomStr()}`, `task ${randomStr()}`],
+  ];
   let cookies: string[];
 
   beforeAll(async () => {
@@ -74,11 +79,10 @@ describe("Session Complete Test", () => {
           const msg = JSON.parse(x.data);
           messages.push(msg);
         });
-        const tasks = [`task ${randomStr()}`, `task ${randomStr()}`];
         ws.send(
           JSON.stringify({
             type: "init_session",
-            tasks,
+            tasks: tasks[i],
             focus_duration: "00:00:05",
           } as SessionWsMessage),
         );
@@ -91,40 +95,40 @@ describe("Session Complete Test", () => {
         expect(messages[0]?.type).toEqual("start_session");
         const session_data = messages.shift();
         expect(session_data?.type).toEqual("start_session");
-        expect(session_data?.tasks?.map((x) => x.title)).toEqual(tasks);
+        expect(session_data?.tasks?.map((x) => x.title)).toEqual(tasks[i]);
 
         await wait(5000); // now we have waited around 5 seconds for session to end
         expect(messages[0]?.type).toEqual("checkin_start");
         messages.shift();
 
-        return ws;
+        return { ws, session_data };
       }),
     );
 
-    const [user1_ws, user2_ws] = ws;
+    const [user0, user1] = ws;
 
     const msg = randomStr();
-    user1_ws?.send(
+    user0?.ws?.send(
       JSON.stringify({
         type: "checkin_message",
         content: msg,
       } as SessionWsMessage),
     );
 
-    const user2_messages: string[] = [];
-    user2_ws?.addEventListener("message", (x) => {
+    const user1_messages: string[] = [];
+    user1?.ws?.addEventListener("message", (x) => {
       const msg = JSON.parse(x.data);
-      user2_messages.push(msg);
+      user1_messages.push(msg);
     });
 
     await wait(100);
-    expect(user2_messages[0]).toEqual({
+    expect(user1_messages[0]).toEqual({
       type: "checkin_partner_message",
       content: msg,
     } as SessionWsResponse);
-    user2_messages.shift();
+    user1_messages.shift();
 
-    user1_ws?.send(
+    user0?.ws?.send(
       JSON.stringify({
         type: "checkin_report",
         reviewee_id: users[1]?.id,
@@ -132,7 +136,17 @@ describe("Session Complete Test", () => {
       } as SessionWsMessage),
     );
 
-    user2_ws?.send(
+    tasks[1]?.map((task) => {
+      user1?.ws?.send(
+        JSON.stringify({
+          type: "toggle_task",
+          is_complete: true,
+          task_id: user1?.session_data.tasks[1].task_id,
+        } as SessionWsMessage),
+      );
+    });
+
+    user1?.ws?.send(
       JSON.stringify({
         type: "checkin_report",
         reviewee_id: users[0]?.id,
@@ -141,16 +155,16 @@ describe("Session Complete Test", () => {
     );
 
     await wait(100);
-    expect(user2_messages[0]).toEqual({
+    expect(user1_messages[0]).toEqual({
       type: "checkin_report_sent",
       work_proved: true,
     } as SessionWsResponse);
-    user2_messages.shift();
+    user1_messages.shift();
 
-    expect(user2_messages[0]).toEqual({
+    expect(user1_messages[0]).toEqual({
       type: "session_done",
     } as SessionWsResponse);
-    user2_messages.shift();
+    user1_messages.shift();
   }, 100000);
 
   afterAll(async () => {
