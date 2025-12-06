@@ -166,20 +166,4 @@ describe("Session Complete Test", () => {
     } as SessionWsResponse);
     user1_messages.shift();
   }, 100000);
-
-  afterAll(async () => {
-    await Promise.all(
-      users.map(async (u, i) => {
-        const headers = {
-          cookie: cookies[i]!,
-        };
-        await auth.api.deleteUser({
-          body: {
-            password: u.password,
-          },
-          headers,
-        });
-      }),
-    );
-  });
 });

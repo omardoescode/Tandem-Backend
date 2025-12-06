@@ -16,3 +16,7 @@ export interface Client {
 export type KeysWithType<T, L> = {
   [K in keyof T]: T[K] extends L ? K : never;
 }[keyof T];
+
+export type Nullable<T> = {
+  [K in keyof T]: T[K] | null;
+};

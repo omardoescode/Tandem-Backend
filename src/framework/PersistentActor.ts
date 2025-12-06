@@ -1,17 +1,15 @@
-import type { Client } from "@/types";
 import { Actor, type ActorMessage } from "./Actor";
 import ActorContext from "./ActorContext";
-import { ExecuteMessage, type DBClientMessage } from "@/session/DBClientActor";
-import type { ActorRef } from "./ActorRef";
+import type { Client } from "@/types";
 
 export type PersistenceMessage =
   | {
       type: "persist";
-      client: ActorRef<DBClientMessage>;
+      client: Client;
     }
   | {
       type: "recover";
-      client: ActorRef<DBClientMessage>;
+      client: Client;
       _reply?: (result: boolean) => Promise<void> | void;
     };
 
@@ -23,7 +21,8 @@ export abstract class PersistantActor<
   MessageType extends ActorMessage,
   InternalState extends BaseState,
 > extends Actor<MessageType | PersistenceMessage> {
-  state: InternalState | null = null;
+  protected state: InternalState | null = null;
+  protected to_update: Partial<InternalState> = {};
 
   constructor(
     id: string,
@@ -39,23 +38,21 @@ export abstract class PersistantActor<
     const msg = message as PersistenceMessage;
     switch (msg.type) {
       case "persist": {
-        if (!this.state) return;
-        await msg.client.send(ExecuteMessage(ctx.methods.persist, this.state));
+        if (!this.to_update) return;
+        await ctx.methods.persist(msg.client, {
+          ...this.to_update,
+          id: this.id,
+        });
         break;
       }
       case "recover":
-        this.state = await msg.client.ask<InternalState>(
-          ExecuteMessage(ctx.methods.get, { id: this.id }),
-        );
+        this.state = await ctx.methods.get(msg.client, { id: this.id });
+        this.to_update = {};
         msg._reply?.(!!this.state);
         break;
     }
   }
 }
-
-type Nullable<T> = {
-  [K in keyof T]: T[K] | null;
-};
 
 interface RepoMethods<InternalState extends BaseState> {
   delete?: (client: Client, args: { id: string }) => Promise<boolean>;
@@ -64,7 +61,7 @@ interface RepoMethods<InternalState extends BaseState> {
     client: Client,
     args: {
       id: string;
-    } & Nullable<InternalState>,
+    } & Partial<InternalState>,
   ) => Promise<void>;
 }
 

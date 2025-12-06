@@ -3,8 +3,8 @@ import ActorContext from "../framework/ActorContext";
 import type { ActorRef } from "@/framework/ActorRef";
 import type { SessionContext, SessionMessage } from "./SessionActor";
 import { v7 as uuidv7, v4 } from "uuid";
-import { type DBClientContext } from "./DBClientActor";
 import type { ConnContext } from "./ConnActor";
+import pool from "@/db/pool";
 
 export type MatchingMessage =
   | {
@@ -35,7 +35,6 @@ export class PeerMatchingActor extends Actor<MatchingMessage> {
     id: string,
     context: ActorContext<MatchingMessage>,
     private session_ctx: SessionContext,
-    private db_client_ctx: DBClientContext,
     private user_ctx: ConnContext,
   ) {
     super(context, id);
@@ -113,9 +112,8 @@ export class PeerMatchingActor extends Actor<MatchingMessage> {
   }
 
   private async create_session(clients: PeerMatchingClient[]) {
-    const client = await this.db_client_ctx.spawn(v4());
-    await client.send({ type: "Init" });
-    const session = await this.session_ctx.spawn(uuidv7()); // TODO: Make an actor that spawns a db entity, will be great if built like an ORM
+    const client = await pool.connect();
+    const session = await this.session_ctx.spawn(uuidv7());
     await Promise.all(
       clients.map(async (cl) => {
         const user_ref = this.user_ctx.get_ref(cl.user_id);
@@ -131,7 +129,6 @@ export class PeerMatchingActor extends Actor<MatchingMessage> {
       type: "StartSession",
       client,
     });
-    await client.send({ type: "Commit" });
     return session;
   }
 }
@@ -141,19 +138,12 @@ export class PeerMatchingContext extends ActorContext<MatchingMessage> {
 
   constructor(
     private session_ctx: SessionContext,
-    private db_client_ctx: DBClientContext,
     private user_ctx: ConnContext,
   ) {
     super();
   }
 
   protected override create_actor(id: string): Actor<MatchingMessage> {
-    return new PeerMatchingActor(
-      id,
-      this,
-      this.session_ctx,
-      this.db_client_ctx,
-      this.user_ctx,
-    );
+    return new PeerMatchingActor(id, this, this.session_ctx, this.user_ctx);
   }
 }

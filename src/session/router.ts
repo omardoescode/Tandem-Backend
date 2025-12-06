@@ -9,7 +9,6 @@ import { TicketManagerContext } from "./TicketManagerActor";
 import { ConnContext } from "./ConnActor";
 import { SessionContext } from "./SessionActor";
 import { TaskContext } from "./TaskActor";
-import { DBClientContext } from "./DBClientActor";
 import { PeerMatchingContext } from "./PeerMatchingActor";
 import { v4 } from "uuid";
 
@@ -30,15 +29,10 @@ ticket_ref.send({
   expiration_seconds: -1,
 });
 
-const db_client_ctx = new DBClientContext();
 const task_ctx = new TaskContext();
 const session_ctx = new SessionContext(task_ctx);
-const user_ctx = new ConnContext(task_ctx, db_client_ctx);
-const peer_matching_ctx = new PeerMatchingContext(
-  session_ctx,
-  db_client_ctx,
-  user_ctx,
-);
+const user_ctx = new ConnContext(task_ctx);
+const peer_matching_ctx = new PeerMatchingContext(session_ctx, user_ctx);
 
 const peer_matching_ref = await peer_matching_ctx.spawn(
   "peer-matching-singleton",

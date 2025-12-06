@@ -15,14 +15,16 @@ interface TaskState extends BaseState {
   createdAt: Date;
 }
 
-type TaskMessage = { type: "toggle"; is_complete: boolean };
+type TaskMessage = {
+  type: "toggle";
+  args: Partial<Omit<TaskState, "createdAt">>;
+};
 
 export class TaskActor extends PersistantActor<TaskMessage, TaskState> {
   protected override async handleMessage(message: TaskMessage): Promise<void> {
     switch (message.type) {
       case "toggle":
-        if (!this.state) return;
-        this.state.isComplete = message.is_complete;
+        this.to_update = message.args;
         break;
       default:
         super.handleMessage(message);

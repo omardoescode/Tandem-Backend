@@ -5,10 +5,9 @@ import ActorContext from "../framework/ActorContext";
 import type { ActorRef } from "@/framework/ActorRef";
 import type { SessionMessage } from "./SessionActor";
 import type { MatchingMessage } from "./PeerMatchingActor";
-import type { DBClientContext } from "./DBClientActor";
-import { v4 as uuid } from "uuid";
 import type { TaskContext } from "./TaskActor";
 import { ContextInitializationError } from "@/framework/Errors";
+import pool from "@/db/pool";
 
 export type ConnMessage =
   | {
@@ -33,7 +32,6 @@ export class ConnActor extends Actor<ConnMessage> {
     context: ActorContext<ConnMessage>,
     private peer_matching_ref: ActorRef<MatchingMessage>,
     private task_context: TaskContext,
-    private client_context: DBClientContext,
   ) {
     super(context, user_id);
   }
@@ -98,9 +96,7 @@ export class ConnActor extends Actor<ConnMessage> {
       }
       case "checkin_report": {
         if (!this.session_ref) return;
-        const client_id = uuid();
-        const client = this.client_context.get_ref(client_id);
-        await client.send({ type: "Init" });
+        const client = await pool.connect();
         this.session_ref.send({
           type: "SessionCheckInReport",
           work_proved: msg.work_proved,
@@ -108,47 +104,41 @@ export class ConnActor extends Actor<ConnMessage> {
           to_id: msg.reviewee_id,
           client,
         });
-
-        await client.send({ type: "Commit" });
-        await this.client_context.delete(client_id);
+        client.release();
         break;
       }
 
       case "checkin_message": {
         if (!this.session_ref) return;
 
-        const client_id = uuid();
-        const client = this.client_context.get_ref(client_id);
-        await client.send({ type: "Init" });
+        const client = await pool.connect();
         this.session_ref.send({
           type: "UserChatMessage",
           user_id: this.id,
           content: msg.content,
           client,
         });
-        await client.send({ type: "Commit" });
-        await this.client_context.delete(client_id);
+        client.release();
         break;
       }
 
       case "toggle_task": {
         console.log("are we here to begin with?");
-        const client_id = uuid();
-        const client = this.client_context.get_ref(client_id);
-        await client.send({ type: "Init" });
+        const client = await pool.connect();
         const task_actor = this.task_context.get_ref(msg.task_id);
         await task_actor.send(
           {
             type: "toggle",
-            is_complete: msg.is_complete,
+            args: {
+              isComplete: msg.is_complete,
+            },
           },
           {
             type: "persist",
             client,
           },
         );
-        await client.send({ type: "Commit" });
-        await this.client_context.delete(client_id);
+        client.release();
         break;
       }
     }
@@ -158,10 +148,7 @@ export class ConnActor extends Actor<ConnMessage> {
 export class ConnContext extends ActorContext<ConnMessage> {
   public override actor_category: string = "exists";
   private peer_matching_ref: ActorRef<MatchingMessage> | null = null;
-  constructor(
-    private task_context: TaskContext,
-    private client_context: DBClientContext,
-  ) {
+  constructor(private task_context: TaskContext) {
     super();
   }
 
@@ -172,12 +159,6 @@ export class ConnContext extends ActorContext<ConnMessage> {
   protected override create_actor(id: string): Actor<ConnMessage> {
     if (!this.peer_matching_ref) throw new ContextInitializationError();
 
-    return new ConnActor(
-      id,
-      this,
-      this.peer_matching_ref,
-      this.task_context,
-      this.client_context,
-    );
+    return new ConnActor(id, this, this.peer_matching_ref, this.task_context);
   }
 }

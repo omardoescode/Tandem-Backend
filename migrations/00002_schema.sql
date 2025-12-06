@@ -6,8 +6,8 @@ create table tandem_session (
 );
 
 create table session_participant (
-  session_id uuid not null references tandem_session(session_id),
-  user_id text not null references "user"(id),
+  session_id uuid not null references tandem_session(session_id) on delete cascade,
+  user_id text not null references "user"(id) on delete cascade,
   status varchar check (status in ('pending', 'complete', 'disconnected')),
   focus_time_seconds INTEGER NOT NULL DEFAULT 0,
   break_time_seconds INTEGER NOT NULL DEFAULT 0,
@@ -16,7 +16,7 @@ create table session_participant (
 
 create table session_task (
   task_id uuid DEFAULT uuidv7() primary key,
-  session_id uuid not null references tandem_session(session_id),
+  session_id uuid not null references tandem_session(session_id) on delete cascade,
   user_id text not null references "user"(id) on delete cascade,
   title varchar(500) not null,
   is_complete boolean default false not null,
@@ -24,9 +24,9 @@ create table session_task (
 );
 
 create table checkin (
-  session_id uuid not null references tandem_session(session_id),
-  reviewer_id text not null references "user"(id),
-  reviewee_id text not null references "user"(id),
+  session_id uuid not null references tandem_session(session_id) on delete cascade,
+  reviewer_id text not null references "user"(id) on delete cascade,
+  reviewee_id text not null references "user"(id) on delete cascade,
   work_proved boolean not null,
   primary key (session_id, reviewee_id, reviewer_id)
 );

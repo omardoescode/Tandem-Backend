@@ -6,9 +6,9 @@ import ActorContext from "../framework/ActorContext";
 import assert from "assert";
 import type { TaskContext } from "./TaskActor";
 import { v7 } from "uuid";
-import { ExecuteMessage, type DBClientMessage } from "./DBClientActor";
 import { createCheckInReport, createSession } from "db/tandem_sessions_sql";
 import interval from "postgres-interval";
+import type { Client } from "@/types";
 
 export type SessionMessage =
   | {
@@ -17,21 +17,21 @@ export type SessionMessage =
       duration: string;
       tasks: string[];
     }
-  | { type: "StartSession"; client: ActorRef<DBClientMessage> }
+  | { type: "StartSession"; client: Client }
   | { type: "CheckInStart" }
   | { type: "UserDisconnected"; user_id: string }
   | {
       type: "UserChatMessage";
       user_id: string;
       content: string;
-      client: ActorRef<DBClientMessage>;
+      client: Client;
     }
   | {
       type: "SessionCheckInReport";
       from_id: string;
       to_id: string;
       work_proved: boolean;
-      client: ActorRef<DBClientMessage>;
+      client: Client;
     };
 
 type SessionState =
@@ -83,12 +83,10 @@ export class SessionActor extends Actor<SessionMessage> {
 
         this.state = { type: "running" };
 
-        await message.client.send(
-          ExecuteMessage(createSession, {
-            sessionId: this.id,
-            scheduledDuration: interval(this.duration),
-          }),
-        );
+        await createSession(message.client, {
+          sessionId: this.id,
+          scheduledDuration: interval(this.duration),
+        });
 
         await Promise.all(
           this.users.map(async (u) => {
@@ -96,13 +94,18 @@ export class SessionActor extends Actor<SessionMessage> {
             const tasks = await Promise.all(
               u.tasks.map(async (task) => {
                 const task_ref = await this.task_ctx.spawn(v7());
-                task_ref.send({
-                  type: "Create",
-                  user_id: u.ref.id,
-                  db_client: message.client,
-                  session_id: this.id,
-                  task,
-                });
+                task_ref.send(
+                  {
+                    type: "toggle",
+                    args: {
+                      userId: u.ref.id,
+                      sessionId: this.id,
+                      title: task,
+                      isComplete: false,
+                    },
+                  },
+                  { type: "persist", client: message.client },
+                );
                 return { task_id: task_ref.id, title: task };
               }),
             );
@@ -204,14 +207,12 @@ export class SessionActor extends Actor<SessionMessage> {
           return;
         }
 
-        await message.client.send(
-          ExecuteMessage(createCheckInReport, {
-            sessionId: this.id,
-            revieweeId: message.from_id,
-            reviewerId: message.to_id,
-            workProved: message.work_proved,
-          }),
-        );
+        await createCheckInReport(message.client, {
+          sessionId: this.id,
+          revieweeId: message.from_id,
+          reviewerId: message.to_id,
+          workProved: message.work_proved,
+        });
 
         await Promise.all(
           this.users.map(async (u) => {
