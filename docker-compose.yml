@@ -1,0 +1,20 @@
+services:
+  database:
+    image: "postgres:18"
+    ports:
+      - "${PORTGRES_PORT}:6543"
+    environment:
+      - POSTGRES_USER
+      - POSTGRES_PASSWORD
+      - POSTGRES_DB
+    networks:
+      - my-net
+    volumes:
+      - db-data:/var/lib/postgresql
+
+volumes:
+  db-data:
+
+networks:
+  my-net:
+    driver: bridge
