@@ -7,6 +7,7 @@ export interface ITaskRepository {
   getByTaskId(taskId: string): Promise<Task | null>;
   getBySessionIdAndUserId(sessionId: string, userId: string): Promise<Task[]>;
   save(...tasks: Task[]): Promise<void>;
+  getBySessionId: (sessionId: string) => Promise<Task[]>;
 }
 
 export const TaskRepository: ITaskRepository = {
@@ -18,6 +19,15 @@ export const TaskRepository: ITaskRepository = {
 
     if (result.length === 0) return null;
     return new Task(result[0]!);
+  },
+
+  getBySessionId: async (sessionId: string): Promise<Task[]> => {
+    const result = await db
+      .select()
+      .from(SessionTaskTable)
+      .where(eq(SessionTaskTable.sessionId, sessionId));
+
+    return result.map((r) => new Task(r));
   },
 
   getBySessionIdAndUserId: async (

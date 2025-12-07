@@ -1,10 +1,13 @@
-import logger from "@/lib/logger";
+import env from "@/utils/env";
 import type { Session } from "../entities/Session";
 import { SessionParticipant } from "../entities/SessionParticipant";
 import { SessionParticipantRepository } from "../repositories/SessionParticipantRepository";
-import { SessionRepository } from "../repositories/SessionRepository";
 import { SessionCacheRegistry } from "./SessionCacheRegistry";
-import assert from "assert";
+
+const disconnection_ms =
+  env.SESSION_PARTICIPANT_DISCONNECTION_MAXIMUM_SECONDS * 1000;
+
+const disconnectionTimers = new Map<string, Timer>();
 
 export const SessionParticipantService = {
   createSessionParticipants: async (
@@ -44,19 +47,14 @@ export const SessionParticipantService = {
 
     SessionCacheRegistry.setParticipantConnection(userId, false);
 
-    const session_cache = SessionCacheRegistry.getUserSession(userId);
-    assert(session_cache);
+    const timer = setTimeout(() => {
+      SessionCacheRegistry.disconnectParticipant(userId);
+      disconnectionTimers.delete(userId);
+    }, disconnection_ms);
 
-    if (!session_cache.participants.some((p) => p.connected)) {
-      session.disconnect();
-      await SessionRepository.save(session);
-      logger.info(
-        `Session disconnected (sessionId=${session.get("sessionId")})`,
-      );
-
-      // TODO: Save this also in cache with a timer for a duration equal to user disconnection duration. If not re-connected, go back to its former state, if not, go back
-      // TODO: Consider the case if a session is disconnected, but a checkin timer still exists
-      // NOTE: I think the solution is omitting disconnection out of the state to make it a linear process
-    }
+    disconnectionTimers.set(userId, timer);
+  },
+  reconnect(userId: string): boolean {
+    return disconnectionTimers.delete(userId);
   },
 };

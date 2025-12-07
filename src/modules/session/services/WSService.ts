@@ -7,6 +7,16 @@ import { TaskService } from "./TaskService";
 import { logger } from "better-auth";
 import { CheckinService } from "./CheckinService";
 import { SessionParticipantRepository } from "../repositories/SessionParticipantRepository";
+import { SessionService } from "./SessionService";
+
+// Handle reconnection if any
+const handleReconnct = async (user: User) => {
+  const userId = user.get("id");
+  const session = SessionCacheRegistry.getUserSession(userId);
+  if (!session) return;
+
+  await SessionService.rejoinSession(userId, session.sessionId);
+};
 
 // TODO: Check for expected session state before proceeding, or for existence of session
 const handleMessage = async (message: SessionWsMessage, user: User) => {
@@ -83,4 +93,4 @@ const handleMessage = async (message: SessionWsMessage, user: User) => {
 
   throw new Error("Unimplemented");
 };
-export const WSService = { handleMessage };
+export const WSService = { handleMessage, handleReconnect: handleReconnct };

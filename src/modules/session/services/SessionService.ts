@@ -9,6 +9,9 @@ import { SessionParticipantService } from "./SessionParticipantService";
 import { SessionParticipantRepository } from "../repositories/SessionParticipantRepository";
 import logger from "@/lib/logger";
 import { SessionCacheRegistry } from "./SessionCacheRegistry";
+import assert from "assert";
+import { TaskRepository } from "../repositories/TaskRepository";
+import moment from "moment";
 
 export interface SessionCreation {
   duration: string;
@@ -91,11 +94,23 @@ const handleDisconnect = async (userId: string) => {
 
   const sessionState = session.get("state");
 
-  if (session.get("state") === "finished") return;
+  if (sessionState === "finished") return;
 
   await SessionParticipantService.handleDisconnect(session, userId);
+  // TODO: Inform other participants that the user has disconnected??
 
-  // TODO: Handle the case if all users disconnected while a session is still mid way
+  const session_cache = SessionCacheRegistry.getUserSession(userId);
+  assert(session_cache);
+
+  if (!session_cache.participants.some((p) => p.connected)) {
+    session.disconnect();
+    await SessionRepository.save(session);
+    logger.info(`Session disconnected (sessionId=${session.get("sessionId")})`);
+
+    // TODO: Save this also in cache with a timer for a duration equal to user disconnection duration. If not re-connected, go back to its former state, if not, go back
+    // TODO: Consider the case if a session is disconnected, but a checkin timer still exists
+    // NOTE: I think the solution is omitting disconnection out of the state to make it a linear process
+  }
 };
 
 const endSession = async (sessionId: string) => {
@@ -125,8 +140,62 @@ const endSession = async (sessionId: string) => {
   logger.info(`Session is over (sessionId=${sessionId})`);
 };
 
+const rejoinSession = async (userId: string, sessionId: string) => {
+  SessionParticipantService.reconnect(userId);
+  const session = await SessionRepository.getBySessionId(sessionId);
+  if (!session) {
+    logger.warn(
+      `Failed to rejoin session (sessionId=${sessionId}, userId=${userId})`,
+    );
+    return;
+  }
+
+  const [participants, tasks] = await Promise.all([
+    SessionParticipantRepository.getBySessionId(sessionId),
+    TaskRepository.getBySessionId(sessionId),
+  ]);
+
+  const sessionStatus =
+    session.get("state") === "running" ? "running" : "checkin";
+
+  const startTime = session.get("startTime");
+  const scheduledDuration = session.get("scheduledDuration");
+
+  const partners = participants
+    .filter((p) => p.get("userId") !== userId)
+    .map((p) => ({
+      id: p.get("userId"),
+      tasks: tasks
+        .filter((t) => t.get("userId") === p.get("userId"))
+        .map((t) => t.get("title")),
+    }));
+
+  const userTasks = tasks
+    .filter((t) => t.get("userId") === userId)
+    .map((t) => ({
+      task_id: t.get("taskId"),
+      title: t.get("title"),
+    }));
+
+  const timeLeft =
+    sessionStatus === "running"
+      ? moment(startTime).add(moment.duration(scheduledDuration)).toISOString()
+      : undefined;
+
+  console.log("made it here");
+  WebSocketRegistry.broadcast(userId, {
+    type: "session_data",
+    session_status: sessionStatus,
+    time_left: timeLeft,
+    partners,
+    tasks: userTasks,
+    start_time: startTime.toISOString(),
+  });
+};
+
 export const SessionService = {
   initializeSession,
   handleDisconnect,
   endSession,
+  rejoinSession,
 };

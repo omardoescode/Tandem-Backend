@@ -1,16 +1,18 @@
 import logger from "@/lib/logger";
-import type { SessionParticipantState } from "../entities/SessionParticipant";
 
 type CachedSessionState = "running" | "checkin";
+
 interface ParticipantCache {
   id: string;
   connected: boolean;
   reported: boolean;
 }
+
 interface SessionCacheEntry {
   sessionId: string;
   state: CachedSessionState;
   participants: ParticipantCache[];
+  entirelyDisconnectedParticipants: ParticipantCache[];
 }
 
 const sessionCache = new Map<string, Omit<SessionCacheEntry, "sessionId">>();
@@ -39,6 +41,7 @@ export const SessionCacheRegistry = {
         connected: true,
         reported: false,
       })),
+      entirelyDisconnectedParticipants: [],
     });
 
     participants.forEach((u) => userToSessionCache.set(u, sessionId));
@@ -88,6 +91,23 @@ export const SessionCacheRegistry = {
     return true;
   },
 
+  // By deleting a user from cache, all changes won't occur to this user from now, and the disconnected state will persist
+  disconnectParticipant: (participantId: string): boolean => {
+    const sessionId = userToSessionCache.get(participantId);
+    if (!sessionId) return false;
+
+    const session = sessionCache.get(sessionId);
+    if (!session) return false;
+
+    const index = session.participants.findIndex((v) => v.id === participantId);
+    if (index === -1) return false;
+
+    const [removed] = session.participants.splice(index, 1);
+
+    session.entirelyDisconnectedParticipants.push(removed!);
+    return true;
+  },
+
   // TODO: Use this on re-entry  to a session again
   setParticipantConnection(userId: string, connected: boolean) {
     const participant = getParticipantCache(userId);
@@ -95,6 +115,7 @@ export const SessionCacheRegistry = {
       logger.warn(`Participant cache not found. (userId=${userId})`);
       return;
     }
+
     participant.connected = connected;
   },
 

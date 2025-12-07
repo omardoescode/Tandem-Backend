@@ -43,8 +43,9 @@ sessionRouter.get(
     const ws_id = crypto.randomUUID();
 
     return {
-      onOpen(_, ws) {
+      async onOpen(_, ws) {
         WebSocketRegistry.addSocket(userId, ws_id, ws);
+        await WSService.handleReconnect(user);
       },
       async onMessage(event, ws) {
         assert(userId);
