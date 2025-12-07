@@ -2,11 +2,19 @@ import { v7 } from "uuid";
 import { Task } from "../entities/Task";
 import { TaskRepository } from "../repositories/TaskRepository";
 
-async function toggleTask(taskId: string, isComplete: boolean) {
+async function toggleTask(
+  taskId: string,
+  isComplete?: boolean,
+): Promise<boolean> {
   const task = await TaskRepository.getByTaskId(taskId);
-  if (!task) return;
-  task.toggleTask(isComplete);
+  if (!task) return false;
+
+  const new_value =
+    isComplete == undefined ? !task.get("isComplete") : isComplete;
+  task.toggleTask(new_value);
+
   await TaskRepository.save();
+  return true;
 }
 
 async function createSessionTasks(

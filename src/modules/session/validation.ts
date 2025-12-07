@@ -7,6 +7,10 @@ export const DurationSchema = z
 
 export type Duration = z.infer<typeof DurationSchema>;
 
+export const TaskIdParamSchema = z.object({
+  taskId: z.string().nonempty(),
+});
+
 export const SessionWSMessageSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("init_session"),

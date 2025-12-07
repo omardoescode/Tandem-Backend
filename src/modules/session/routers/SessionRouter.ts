@@ -1,19 +1,19 @@
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import { upgradeWebSocket } from "hono/bun";
-import { WebSocketRegistry } from "./services/WebSocketRegistry";
-import { UserRepository } from "../auth/UserRepository";
-import { SessionWSMessageSchema, type SessionWsMessage } from "./validation";
+import { WebSocketRegistry } from "../services/WebSocketRegistry";
+import { UserRepository } from "@/modules/auth/UserRepository";
+import { SessionWSMessageSchema, type SessionWsMessage } from "../validation";
 import assert from "assert";
 import type { WSContext } from "hono/ws";
-import { TicketService } from "./services/TicketService";
-import { protectedRoute } from "../auth/middleware";
+import { TicketService } from "../services/TicketService";
+import { protectedRoute } from "@/modules/auth/middleware";
 import { SuccessResponse } from "@/utils/responses";
-import { WSService } from "./services/WSService";
+import { WSService } from "../services/WSService";
 
 const sessionRouter = new Hono();
 
-sessionRouter.get("get_ticket", protectedRoute, async (c) => {
+sessionRouter.get("ticket", protectedRoute, async (c) => {
   const user = c.get("user");
   const ticket = TicketService.addTicket(user.id);
   return c.json(SuccessResponse({ ticket }));

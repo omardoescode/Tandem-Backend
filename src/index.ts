@@ -3,11 +3,12 @@ import env from "./utils/env";
 import { logger } from "hono/logger";
 import { cors } from "hono/cors";
 import authRouter from "./modules/auth/router";
-import sessionRouter from "./modules/session/router";
 import { openAPIRouteHandler } from "hono-openapi";
 import { Scalar } from "@scalar/hono-api-reference";
 
 import { websocket } from "hono/bun";
+import taskRouter from "./modules/session/routers/TaskRouter";
+import sessionRouter from "./modules/session/routers/SessionRouter";
 const app = new Hono().basePath("/api");
 app.use(logger());
 
@@ -25,6 +26,7 @@ app.use(
 
 app.route("auth/*", authRouter);
 app.route("session/", sessionRouter);
+app.route("task/", taskRouter);
 
 app.get("", (c) => c.text("hello"));
 
