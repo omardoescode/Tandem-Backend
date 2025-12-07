@@ -1,13 +1,9 @@
 import { Entity } from "@/utils/Entity";
 
-export interface AchievementState {
+export interface AchievementData {
   achievementId: string;
   name: string;
-  description?: string;
+  description: string | null;
 }
 
-export class Achievement extends Entity<AchievementState> {
-  constructor(state: AchievementState) {
-    super(state);
-  }
-}
+export class Achievement extends Entity<AchievementData> {}
