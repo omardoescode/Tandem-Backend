@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "resolveJsonModule": true,
     // Environment setup & latest features
     "lib": [
       "ESNext"

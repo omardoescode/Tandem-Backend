@@ -4,7 +4,8 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "bun run --hot src/index.ts"
+    "dev": "bun run --hot src/index.ts",
+    "init_achievements": "bun run src/workers/init_achievements.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",
