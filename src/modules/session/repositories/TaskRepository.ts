@@ -4,6 +4,7 @@ import { SessionTaskTable } from "@/db/schemas/session";
 import { and, eq } from "drizzle-orm";
 
 export interface ITaskRepository {
+  getByUserId(userId: string): Promise<Task[]>;
   getByTaskId(taskId: string): Promise<Task | null>;
   getBySessionIdAndUserId(sessionId: string, userId: string): Promise<Task[]>;
   save(...tasks: Task[]): Promise<void>;
@@ -19,6 +20,15 @@ export const TaskRepository: ITaskRepository = {
 
     if (result.length === 0) return null;
     return new Task(result[0]!);
+  },
+
+  getByUserId: async (userId: string): Promise<Task[]> => {
+    const result = await db
+      .select()
+      .from(SessionTaskTable)
+      .where(eq(SessionTaskTable.userId, userId));
+
+    return result.map((r) => new Task(r));
   },
 
   getBySessionId: async (sessionId: string): Promise<Task[]> => {

@@ -36,11 +36,12 @@ const handleMessage = async (message: SessionWsMessage, user: User) => {
       }); // TODO: Should I prompt the user
       return;
     case "toggle_task":
-      return TaskService.toggleTask(
+      const toggled = await TaskService.toggleTask(
         userId,
         message.task_id,
         message.is_complete,
       );
+      return;
     case "checkin_report": {
       const sessionId = SessionCacheRegistry.getUserSessionId(userId);
       if (!sessionId) {

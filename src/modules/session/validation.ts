@@ -1,7 +1,7 @@
 import z from "zod";
 
 export const TaskIdParamSchema = z.object({
-  taskId: z.string().nonempty(),
+  id: z.string().nonempty(),
 });
 
 export const TaskCompletionStatusBodySchema = z.object({
@@ -104,7 +104,6 @@ export const SessionWSResponseSchema = z.discriminatedUnion("type", [
       }),
     ),
     start_time: z.iso.date(),
-    scheduled_end_time: z.iso.date(),
   }),
   z.object({ type: z.literal("already_in_session") }),
 ]);

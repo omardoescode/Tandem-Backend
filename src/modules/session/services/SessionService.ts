@@ -182,7 +182,6 @@ const rejoinSession = async (userId: string, sessionId: string) => {
       ? moment(startTime).add(moment.duration(scheduledDuration)).toISOString()
       : undefined;
 
-  console.log("made it here");
   WebSocketRegistry.broadcast(userId, {
     type: "session_data",
     session_status: sessionStatus,

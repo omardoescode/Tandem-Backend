@@ -2,7 +2,6 @@ import { db } from "@/db";
 import { SessionParticipant } from "../entities/SessionParticipant";
 import { SessionParticipantTable } from "@/db/schemas/session";
 import { and, eq, sql } from "drizzle-orm";
-import logger from "@/lib/logger";
 
 export interface ISessionParticipantRepository {
   getByUserIdAndSessionId(

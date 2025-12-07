@@ -10,6 +10,7 @@ import {
   interval,
   primaryKey,
   pgEnum,
+  bigint,
 } from "drizzle-orm/pg-core";
 import { user } from "./auth";
 import { sessionStates } from "@/modules/session/entities/Session";
@@ -44,8 +45,18 @@ export const SessionParticipantTable = pgTable(
       .references(() => user.id, { onDelete: "cascade" }),
 
     state: SessionParticipantState().notNull(),
-    focusTimeSeconds: integer("focus_time_seconds").notNull().default(0),
-    breakTimeSeconds: integer("break_time_seconds").notNull().default(0),
+
+    focusTimeSeconds: bigint("focus_time_seconds", { mode: "number" })
+      .notNull()
+      .default(0),
+    breakTimeSeconds: bigint("break_time_seconds", { mode: "number" })
+      .notNull()
+      .default(0),
+
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .notNull(),
   },
   (table) => [primaryKey({ columns: [table.sessionId, table.userId] })],
 );

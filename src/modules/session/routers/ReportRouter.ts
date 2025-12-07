@@ -16,7 +16,6 @@ reportRouter.get(
   async (c) => {
     const { id } = c.get("user");
     const reports = await CheckinService.getRevieweeReportsData(id);
-    console.log(reports);
     return c.json(SuccessResponse(reports));
   },
 );

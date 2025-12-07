@@ -70,8 +70,6 @@ describe("Session Complete Test", () => {
   });
 
   it("Session Main Test", async () => {
-    console.log(users);
-
     const ws = await Promise.all(
       users.map(async (u, i) => {
         const res: any = await fetch(`${HOST}/api/session/ticket`, {
@@ -147,12 +145,12 @@ describe("Session Complete Test", () => {
       } as SessionWsMessage),
     );
 
-    tasks[1]?.map((task) => {
+    user1?.session_data?.tasks.forEach((task) => {
       user1?.ws?.send(
         JSON.stringify({
           type: "toggle_task",
           is_complete: true,
-          task_id: user1?.session_data.tasks[1].task_id,
+          task_id: task.task_id,
         } as SessionWsMessage),
       );
     });
