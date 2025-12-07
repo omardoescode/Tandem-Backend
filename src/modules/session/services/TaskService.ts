@@ -3,11 +3,12 @@ import { Task } from "../entities/Task";
 import { TaskRepository } from "../repositories/TaskRepository";
 
 async function toggleTask(
+  userId: string,
   taskId: string,
   isComplete?: boolean,
 ): Promise<boolean> {
   const task = await TaskRepository.getByTaskId(taskId);
-  if (!task) return false;
+  if (!task || task.get("taskId") !== userId) return false;
 
   const new_value =
     isComplete == undefined ? !task.get("isComplete") : isComplete;

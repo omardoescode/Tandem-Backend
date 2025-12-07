@@ -21,10 +21,11 @@ taskRouter.put(
   zValidator("json", TaskCompletionStatusBodySchema),
   async (c) => {
     // NOTE: Should we consider checking for the task id belonging to this user
+    const { id: userId } = c.get("user");
     const { taskId } = c.req.valid("param");
     const { isComplete } = c.req.valid("json");
 
-    const task = TaskService.toggleTask(taskId, isComplete);
+    const task = TaskService.toggleTask(userId, taskId, isComplete);
     if (!task) return c.json(ErrorResponse("not found"), StatusCodes.NOT_FOUND);
 
     return c.json(SuccessResponse());
