@@ -1,15 +1,19 @@
 import z from "zod";
 
+export const TaskIdParamSchema = z.object({
+  taskId: z.string().nonempty(),
+});
+
+export const TaskCompletionStatusBodySchema = z.object({
+  isComplete: z.boolean(),
+});
+
 const hhmmssRegex = /^([0-1]\d|2[0-3]):([0-5]\d):([0-5]\d)$/;
 export const DurationSchema = z
   .string()
   .regex(hhmmssRegex, "Invalid time format HH:MM:SS");
 
 export type Duration = z.infer<typeof DurationSchema>;
-
-export const TaskIdParamSchema = z.object({
-  taskId: z.string().nonempty(),
-});
 
 export const SessionWSMessageSchema = z.discriminatedUnion("type", [
   z.object({

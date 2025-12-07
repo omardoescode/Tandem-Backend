@@ -9,6 +9,7 @@ import { Scalar } from "@scalar/hono-api-reference";
 import { websocket } from "hono/bun";
 import taskRouter from "./modules/session/routers/TaskRouter";
 import sessionRouter from "./modules/session/routers/SessionRouter";
+import reportRouter from "./modules/session/routers/ReportRouter";
 const app = new Hono().basePath("/api");
 app.use(logger());
 
@@ -27,6 +28,7 @@ app.use(
 app.route("auth/*", authRouter);
 app.route("session/", sessionRouter);
 app.route("task/", taskRouter);
+app.route("report/", reportRouter);
 
 app.get("", (c) => c.text("hello"));
 

@@ -1,5 +1,8 @@
 import { v7 } from "uuid";
-import { CheckinReport } from "../entities/CheckinReport";
+import {
+  CheckinReport,
+  type CheckinReportData,
+} from "../entities/CheckinReport";
 import { CheckinReportRepository } from "../repositories/CheckinReportRepository";
 import { CheckinMessage } from "../entities/CheckinMessage";
 import { CheckinMessageRepository } from "../repositories/CheckinMessageRepository";
@@ -96,8 +99,19 @@ async function sendMessage(
   await CheckinMessageRepository.save(msg);
 }
 
+async function getRevieweeReportsData(
+  userId: string,
+): Promise<Omit<CheckinReportData, "reportId">[]> {
+  const reports = await CheckinReportRepository.getRevieweeReports(userId);
+  return reports.map((r) => {
+    const { reportId: _, ...rest } = r.getCommittedState();
+    return rest;
+  });
+}
+
 export const CheckinService = {
   handleReport,
   sendMessage,
   createCheckinTimer,
+  getRevieweeReportsData,
 };

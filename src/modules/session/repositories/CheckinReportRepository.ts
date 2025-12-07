@@ -4,10 +4,7 @@ import { CheckinReportTable } from "@/db/schemas/session";
 import { eq, sql } from "drizzle-orm";
 
 export interface ICheckinReportRepository {
-  getRevieweeReports(
-    sessionId: string,
-    revieweeId: string,
-  ): Promise<CheckinReport | null>;
+  getRevieweeReports(revieweeId: string): Promise<CheckinReport[]>;
 
   save(...reports: CheckinReport[]): Promise<void>;
 
@@ -16,11 +13,12 @@ export interface ICheckinReportRepository {
 }
 
 export const CheckinReportRepository: ICheckinReportRepository = {
-  getRevieweeReports: function (
-    sessionId: string,
-    revieweeId: string,
-  ): Promise<CheckinReport | null> {
-    throw new Error("Function not implemented.");
+  getRevieweeReports: async (revieweeId: string): Promise<CheckinReport[]> => {
+    const res = await db
+      .select()
+      .from(CheckinReportTable)
+      .where(eq(CheckinReportTable.revieweeId, revieweeId));
+    return res.map((r) => new CheckinReport(r));
   },
 
   save: async (...reports: CheckinReport[]): Promise<void> => {

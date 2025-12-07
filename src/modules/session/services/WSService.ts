@@ -23,7 +23,7 @@ const handleMessage = async (message: SessionWsMessage, user: User) => {
         duration: message.focus_duration,
         tasks: message.tasks,
         userId,
-      });
+      }); // TODO: Should I prompt the user
       return;
     case "toggle_task":
       return TaskService.toggleTask(message.task_id, message.is_complete);
