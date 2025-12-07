@@ -10,6 +10,9 @@ const envSchema = z.object({
   NODE_DEVELOPMENT: z
     .enum(["development", "testing", "production"])
     .default("development"),
+  LOG_LEVEL: z
+    .enum(["error", "warn", "info", "http", "verbose", "debug", "silly"])
+    .default("silly"),
   POSTGRES_HOST: z.string(),
   POSTGRES_PORT: PortSchema,
   POSTGRES_USER: z.string(),

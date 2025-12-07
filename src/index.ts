@@ -2,7 +2,8 @@ import { Hono } from "hono";
 import env from "./utils/env";
 import { logger } from "hono/logger";
 import { cors } from "hono/cors";
-import authRouter from "./auth/router";
+import authRouter from "./modules/auth/router";
+import sessionRouter from "./modules/session/router";
 import { openAPIRouteHandler } from "hono-openapi";
 import { Scalar } from "@scalar/hono-api-reference";
 
@@ -23,6 +24,8 @@ app.use(
 );
 
 app.route("auth/*", authRouter);
+app.route("session/", sessionRouter);
+
 app.get("", (c) => c.text("hello"));
 
 app.get(

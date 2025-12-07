@@ -2,7 +2,7 @@ services:
   database:
     image: "postgres:18"
     ports:
-      - "${PORTGRES_PORT}:6543"
+      - "${POSTGRES_PORT}:5432"
     environment:
       - POSTGRES_USER
       - POSTGRES_PASSWORD
