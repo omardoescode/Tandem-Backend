@@ -20,7 +20,7 @@ const envSchema = z.object({
   POSTGRES_USER: z.string(),
   POSTGRES_PASSWORD: z.string(),
   POSTGRES_DB: z.string(),
-  PORT: StringToNumberSchema,
+  PORT: StringToNumberSchema.default(3000),
 });
 
 const env = Object.freeze(envSchema.parse(process.env));

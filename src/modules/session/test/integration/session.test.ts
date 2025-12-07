@@ -74,7 +74,7 @@ describe("Session Complete Test", () => {
 
     const ws = await Promise.all(
       users.map(async (u, i) => {
-        const res: any = await fetch(`${HOST}/api/session/get_ticket`, {
+        const res: any = await fetch(`${HOST}/api/session/ticket`, {
           headers: { cookie: cookies[i]! },
         }).then((x) => {
           return x.json();
