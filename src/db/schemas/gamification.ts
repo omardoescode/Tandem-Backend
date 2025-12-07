@@ -14,7 +14,7 @@ import { sql } from "drizzle-orm";
 
 export const UserStatsTable = pgTable("user_stats", {
   userId: text("user_id")
-    .references(() => user.id)
+    .references(() => user.id, { onDelete: "cascade" })
     .notNull()
     .primaryKey(),
   level: integer("level").notNull(),
@@ -22,6 +22,7 @@ export const UserStatsTable = pgTable("user_stats", {
   tillNextLevelXP: integer("till_next_level_xp").notNull(),
   totalAchievements: integer("total_achievements").notNull().default(0),
   totalCoins: integer("total_coins").notNull().default(0),
+  currentCoins: integer("current_coins").notNull().default(0),
   totalFocusMinutes: integer("total_focus_minutes").notNull().default(0),
   totalBreakMinutes: integer("total_break_minutes").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true })
@@ -36,20 +37,25 @@ export const GamificationEventTypeEnum = pgEnum("gamification_event_type", [
 ]);
 
 export const GamificationHistoryTable = pgTable("gamification_history", {
-  userId: text("user_id").references(() => user.id),
+  userId: text("user_id").references(() => user.id, { onDelete: "cascade" }),
   type: GamificationEventTypeEnum(),
   added_coins: integer(),
 
   // ended session
   added_xp: integer(),
-  sessionId: uuid("session_id").references(() => TandemSessionTable.sessionId),
+  sessionId: uuid("session_id").references(() => TandemSessionTable.sessionId, {
+    onDelete: "cascade",
+  }),
 
   // purchase item
-  purchased: uuid("purchase_id").references(() => PurchaseTable.purchaseId),
+  purchased: uuid("purchase_id").references(() => PurchaseTable.purchaseId, {
+    onDelete: "cascade",
+  }),
 
   // achieved
   achieved: varchar("achievement_id").references(
     () => AchievementTable.achievementId,
+    { onDelete: "cascade" },
   ),
 });
 
@@ -64,7 +70,12 @@ export const PurchaseTable = pgTable("purchase", {
   purchaseId: uuid("purchase_id")
     .default(sql`uuidv7()`)
     .primaryKey(),
-  itemId: varchar("item_id").references(() => StoreItemTable.itemId),
+  userId: text("user_id")
+    .references(() => user.id, { onDelete: "cascade" })
+    .notNull(),
+  itemId: varchar("item_id")
+    .references(() => StoreItemTable.itemId, { onDelete: "cascade" })
+    .notNull(),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -79,10 +90,12 @@ export const AchievementTable = pgTable("achievement", {
 export const UserAchievementTable = pgTable(
   "user_achievement",
   {
-    userId: text("userId").references(() => user.id),
-    achievementId: varchar("achievement_id").references(
-      () => AchievementTable.achievementId,
-    ),
+    userId: text("userId")
+      .references(() => user.id, { onDelete: "cascade" })
+      .notNull(),
+    achievementId: varchar("achievement_id")
+      .references(() => AchievementTable.achievementId, { onDelete: "cascade" })
+      .notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

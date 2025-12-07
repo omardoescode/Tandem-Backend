@@ -2,7 +2,8 @@ import { Entity } from "@/utils/Entity";
 
 export interface PurchaseState {
   purchaseId: string;
-  itemId?: string;
+  itemId: string;
+  userId: string;
   createdAt: Date;
 }
 

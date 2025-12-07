@@ -5,7 +5,11 @@ import { eq, and } from "drizzle-orm";
 import logger from "@/lib/logger";
 
 export interface IUserAchievementRepository {
-  getByUserAndAchievement(userId: string, achievementId: string): Promise<UserAchievement | null>;
+  getByUserAndAchievement(
+    userId: string,
+    achievementId: string,
+  ): Promise<UserAchievement | null>;
+  getUserAchievements(userId: string): Promise<UserAchievement[]>;
   save(...userAchievements: UserAchievement[]): Promise<void>;
 }
 
@@ -19,14 +23,23 @@ export const UserAchievementRepository: IUserAchievementRepository = {
       .where(
         and(
           eq(UserAchievementTable.userId, userId),
-          eq(UserAchievementTable.achievementId, achievementId)
-        )
+          eq(UserAchievementTable.achievementId, achievementId),
+        ),
       );
 
     if (result.length === 0) {
       return null;
     }
+
     return new UserAchievement({ userId, achievementId, ...result[0]! });
+  },
+  async getUserAchievements(userId: string) {
+    const res = await db
+      .select()
+      .from(UserAchievementTable)
+      .where(eq(UserAchievementTable.userId, userId));
+
+    return res.map((r) => new UserAchievement(r));
   },
   async save(...userAchievements) {
     await Promise.all(
@@ -47,11 +60,14 @@ export const UserAchievementRepository: IUserAchievementRepository = {
             ...ua.getChanges(),
           })
           .onConflictDoUpdate({
-            target: [UserAchievementTable.userId, UserAchievementTable.achievementId],
+            target: [
+              UserAchievementTable.userId,
+              UserAchievementTable.achievementId,
+            ],
             set: changes,
           });
         ua.commit();
-      })
+      }),
     );
   },
 };

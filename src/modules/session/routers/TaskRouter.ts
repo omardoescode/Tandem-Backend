@@ -1,5 +1,4 @@
 import { protectedRoute } from "@/modules/auth/middleware";
-import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { TaskService } from "../services/TaskService";
 import { ErrorResponse, SuccessResponse } from "@/utils/responses";
@@ -10,6 +9,7 @@ import z from "zod";
 const taskRouter = new Hono();
 
 // TODO: Add cursor-based pagination
+// TODO: Fill in these schemas for docs generation
 taskRouter.get(
   "",
   describeRoute({

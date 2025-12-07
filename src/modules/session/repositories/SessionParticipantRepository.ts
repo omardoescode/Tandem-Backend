@@ -13,6 +13,7 @@ export interface ISessionParticipantRepository {
     sessionId: string,
   ): Promise<SessionParticipant[]>;
   getWorkingSessionParticipantsCount(sessionId: string): Promise<number>;
+  getSessionCount(userId: string): Promise<number>;
   save(...participants: SessionParticipant[]): Promise<void>;
 }
 
@@ -69,6 +70,15 @@ export const SessionParticipantRepository: ISessionParticipantRepository = {
           eq(SessionParticipantTable.state, "working"),
         ),
       );
+
+    return result[0]?.count ?? 0;
+  },
+
+  getSessionCount: async (userId: string): Promise<number> => {
+    const result = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(SessionParticipantTable)
+      .where(eq(SessionParticipantTable.userId, userId));
 
     return result[0]?.count ?? 0;
   },
