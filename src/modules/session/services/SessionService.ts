@@ -81,10 +81,7 @@ const handleDisconnect = async (userId: string) => {
   if (found) return;
 
   const sessionId = SessionCacheRegistry.getUserSessionId(userId);
-  if (!sessionId) {
-    logger.warn(`User (userId=${userId}) has no active session`);
-    return;
-  }
+  if (!sessionId) return; // Must be in checkin phase
 
   const session = await SessionRepository.getBySessionId(sessionId);
   if (!session) {

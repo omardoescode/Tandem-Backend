@@ -3,8 +3,8 @@ class TicketManager {
   private tickets: Map<string, string> = new Map();
 
   constructor() {
-    this.tickets.set("0", "abnoOyEIHanqzZTLy6EdIWFTchvECTRO");
-    this.tickets.set("1", "GNOSJifh9JfHCzzZZTcJFrpcyVMBXsaz");
+    this.tickets.set("0", "8gapCqLe4Ll1FlW6fSq1YSVT4FoAGrZW");
+    this.tickets.set("1", "XczPuGGIiXElMDZKgrrtc4D5j2lzwTCL");
   }
 
   public addTicket(userId: string): string {

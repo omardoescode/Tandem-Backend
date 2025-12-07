@@ -8,6 +8,7 @@ import { logger } from "better-auth";
 import { CheckinService } from "./CheckinService";
 import { SessionParticipantRepository } from "../repositories/SessionParticipantRepository";
 
+// TODO: Check for expected session state before proceeding, or for existence of session
 const handleMessage = async (message: SessionWsMessage, user: User) => {
   const userId = user.get("id");
   switch (message.type) {
@@ -18,7 +19,7 @@ const handleMessage = async (message: SessionWsMessage, user: User) => {
         });
         return;
       }
-      PeerMatchingService.addMatchingRequest({
+      const added = PeerMatchingService.addMatchingRequest({
         duration: message.focus_duration,
         tasks: message.tasks,
         userId,

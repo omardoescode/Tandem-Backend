@@ -41,4 +41,8 @@ export class Session extends Entity<SessionData> {
 
     this.set("state", "finished");
   }
+
+  public disconnect() {
+    this.set("state", "disconnected");
+  }
 }

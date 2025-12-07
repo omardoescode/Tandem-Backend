@@ -68,19 +68,17 @@ async function handleReport(
   );
   await CheckinReportRepository.save(report);
 
+  SessionCacheRegistry.report(from);
   await testSessionOver(sessionId);
 }
 
-// TODO: Figure out if a session is over
 async function testSessionOver(sessionId: string) {
-  const working_participants_count =
-    await SessionParticipantRepository.getWorkingSessionParticipantsCount(
-      sessionId,
-    );
-  const full_report_count =
-    await CheckinReportRepository.getSessionReportsCount(sessionId);
-  console.log(working_participants_count, full_report_count);
-  if (working_participants_count === full_report_count)
+  const sessionCache = SessionCacheRegistry.getSession(sessionId);
+  if (!sessionCache) {
+    logger.warn(`Session is not in cache: ${sessionId}`);
+    return;
+  }
+  if (!sessionCache.participants.some((p) => !p.reported))
     await SessionService.endSession(sessionId);
 }
 
