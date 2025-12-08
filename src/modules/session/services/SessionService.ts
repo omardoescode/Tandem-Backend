@@ -12,6 +12,7 @@ import { SessionCacheRegistry } from "./SessionCacheRegistry";
 import assert from "assert";
 import { TaskRepository } from "../repositories/TaskRepository";
 import moment from "moment";
+import { UserStatService } from "@/modules/gamification/services/UserStatService";
 
 export interface SessionCreation {
   duration: string;
@@ -110,6 +111,7 @@ const handleDisconnect = async (userId: string) => {
     // TODO: Save this also in cache with a timer for a duration equal to user disconnection duration. If not re-connected, go back to its former state, if not, go back
     // TODO: Consider the case if a session is disconnected, but a checkin timer still exists
     // NOTE: I think the solution is omitting disconnection out of the state to make it a linear process
+    // TODO: If fully disconnected, apply UserStats.updateStatWithEndedSession
   }
 };
 
@@ -138,6 +140,8 @@ const endSession = async (sessionId: string) => {
   await SessionParticipantRepository.save(...participants);
 
   logger.info(`Session is over (sessionId=${sessionId})`);
+
+  UserStatService.updateStatWithEndedSession(sessionId);
 };
 
 const rejoinSession = async (userId: string, sessionId: string) => {

@@ -41,7 +41,7 @@ export const SessionRepository: ISessionRepository = {
           .insert(TandemSessionTable)
           .values({
             ...session.getCommittedState(),
-            ...session.getChanges(),
+            ...changes,
           })
           .onConflictDoUpdate({
             target: TandemSessionTable.sessionId,

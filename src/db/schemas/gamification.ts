@@ -25,6 +25,10 @@ export const UserStatsTable = pgTable("user_stats", {
   currentCoins: integer("current_coins").notNull().default(0),
   totalFocusMinutes: integer("total_focus_minutes").notNull().default(0),
   totalBreakMinutes: integer("total_break_minutes").notNull().default(0),
+  totalSessionCount: integer("total_session_count").notNull().default(0),
+  disConnectedSessionCount: integer("disconnected_session_count")
+    .notNull()
+    .default(0),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

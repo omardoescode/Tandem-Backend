@@ -10,11 +10,17 @@ export interface UserStatsData {
   totalCoins: number;
   totalFocusMinutes: number;
   totalBreakMinutes: number;
+  totalSessionCount: number;
+  disConnectedSessionCount: number;
   createdAt: Date;
 }
 
 export class UserStats extends Entity<UserStatsData> {
-  constructor(state: UserStatsData) {
-    super(state);
+  public add<
+    T extends {
+      [K in keyof UserStatsData]: UserStatsData[K] extends number ? K : never;
+    }[keyof UserStatsData],
+  >(field: T, value: number) {
+    this.set(field, this.get(field) + value);
   }
 }
