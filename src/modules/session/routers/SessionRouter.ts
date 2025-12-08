@@ -10,6 +10,7 @@ import { TicketService } from "../services/TicketService";
 import { protectedRoute } from "@/modules/auth/middleware";
 import { SuccessResponse } from "@/utils/responses";
 import { WSService } from "../services/WSService";
+import { SessionService } from "../services/SessionService";
 
 const sessionRouter = new Hono();
 
@@ -24,6 +25,20 @@ sessionRouter.get(
     const user = c.get("user");
     const ticket = TicketService.addTicket(user.id);
     return c.json(SuccessResponse({ ticket }));
+  },
+);
+
+sessionRouter.get(
+  "session_data",
+  describeRoute({
+    description:
+      "Get state about user current session. For now, it only returns if there's one or not",
+  }),
+  protectedRoute,
+  async (c) => {
+    const { id: userId } = c.get("user");
+    const exists = SessionService.canReturn(userId);
+    return c.json(SuccessResponse({ exists }));
   },
 );
 

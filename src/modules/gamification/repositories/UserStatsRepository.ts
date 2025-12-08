@@ -16,6 +16,8 @@ const defaultValues = (userId: string) => ({
   currentXP: 0,
   tillNextLevelXP: LevelConfig.xpBase,
 });
+
+// TODO: You forgot to use the work_proved in checkin_reports
 export const UserStatsRepository: IUserStatRepository = {
   get: async (userId: string): Promise<UserStats> => {
     const existing = await db

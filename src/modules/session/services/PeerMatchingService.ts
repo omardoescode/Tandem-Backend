@@ -16,37 +16,40 @@ type MatchingRequestState = Omit<MatchingRequest, "duration"> & {
 const requests = new Map<string, MatchingRequestState[]>();
 const exists = new Map<string, string>();
 
-const matching_run = setInterval(() => {
-  try {
-    const matchings: SessionCreation[] = [];
+const matching_run = () => {
+  setInterval(() => {
+    try {
+      const matchings: SessionCreation[] = [];
 
-    for (const entry of requests.entries()) {
-      const [duration, queue] = entry;
-      while (queue.length >= 2) {
-        const users = [queue.shift()!, queue.shift()!];
-        const matching = {
-          partners: users.map((u) => ({
-            userId: u.userId,
-            tasks: u.tasks,
-          })),
-          duration,
-        };
-        matchings.push(matching);
-        users.forEach((u) => exists.delete(u.userId));
+      for (const entry of requests.entries()) {
+        const [duration, queue] = entry;
+        while (queue.length >= 2) {
+          const users = [queue.shift()!, queue.shift()!];
+          const matching = {
+            partners: users.map((u) => ({
+              userId: u.userId,
+              tasks: u.tasks,
+            })),
+            duration,
+          };
+          matchings.push(matching);
+          users.forEach((u) => exists.delete(u.userId));
+        }
+        requests.set(duration, queue);
+
+        if (queue.length === 0) requests.delete(duration);
       }
-      requests.set(duration, queue);
 
-      if (queue.length === 0) requests.delete(duration);
+      matchings.forEach((matching) => {
+        logger.info(`Matching ${matching.partners.map((p) => p.userId)}`);
+        SessionService.initializeSession(matching);
+      });
+    } catch (err: any) {
+      console.error(err);
     }
-
-    matchings.forEach((matching) => {
-      logger.info(`Matching ${matching.partners.map((p) => p.userId)}`);
-      SessionService.initializeSession(matching);
-    });
-  } catch (err: any) {
-    console.error(err);
-  }
-}, 1000);
+  }, 1000);
+};
+matching_run();
 
 export const PeerMatchingService = {
   addMatchingRequest(request: MatchingRequest): boolean {

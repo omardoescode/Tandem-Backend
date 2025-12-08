@@ -26,6 +26,7 @@ function createCheckinTimer(sessionId: string, duration: string) {
   checkinTimers.set(sessionId, timer);
 }
 
+// TODO: In case of starting a checkin with only one user, auto generate a checkin report with user as reviewer and reviewee (self-checkin). Only consider if the other gets disconnected before giving a report
 async function startCheckin(sessionId: string) {
   logger.info(`Beginning Checkin for session (sessionId=${sessionId})`);
 

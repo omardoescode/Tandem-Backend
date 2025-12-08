@@ -3,6 +3,7 @@ import type { Session } from "../entities/Session";
 import { SessionParticipant } from "../entities/SessionParticipant";
 import { SessionParticipantRepository } from "../repositories/SessionParticipantRepository";
 import { SessionCacheRegistry } from "./SessionCacheRegistry";
+import { SessionService } from "./SessionService";
 
 const disconnection_ms =
   env.SESSION_PARTICIPANT_DISCONNECTION_MAXIMUM_SECONDS * 1000;
@@ -47,7 +48,13 @@ export const SessionParticipantService = {
 
     SessionCacheRegistry.setParticipantConnection(userId, false);
 
-    const timer = setTimeout(() => {
+    const timer = setTimeout(async () => {
+      if (
+        SessionCacheRegistry.getSession(session.get("sessionId"))?.participants
+          .length == 0
+      ) {
+        await SessionService.endSession(session.get("state"), false); // TODO:  add this parameter
+      }
       SessionCacheRegistry.disconnectParticipant(userId);
       disconnectionTimers.delete(userId);
     }, disconnection_ms);

@@ -115,24 +115,27 @@ const handleDisconnect = async (userId: string) => {
   }
 };
 
-const endSession = async (sessionId: string) => {
+const endSession = async (sessionId: string, connected: boolean = true) => {
   const session = await SessionRepository.getBySessionId(sessionId);
   if (!session) {
     logger.warn(`Session (sessionId=${sessionId}) is not in DB`);
     return;
   }
 
-  session.finish();
+  if (connected) session.finish();
+  else session.disconnect();
+
   await SessionRepository.save(session);
   const participants =
     await SessionParticipantRepository.getBySessionId(sessionId);
 
   participants.forEach((p) => {
-    p.finish();
+    if (connected) p.finish();
+    else {
+    } // Already disconnected earlier, which led to this case
+
     const userId = p.get("userId");
-    WebSocketRegistry.broadcast(userId, {
-      type: "session_done",
-    });
+    WebSocketRegistry.broadcast(userId, { type: "session_done" });
     WebSocketRegistry.endUserConnection(userId);
   });
 
@@ -176,10 +179,7 @@ const rejoinSession = async (userId: string, sessionId: string) => {
 
   const userTasks = tasks
     .filter((t) => t.get("userId") === userId)
-    .map((t) => ({
-      task_id: t.get("taskId"),
-      title: t.get("title"),
-    }));
+    .map((t) => ({ task_id: t.get("taskId"), title: t.get("title") }));
 
   const timeLeft =
     sessionStatus === "running"
@@ -196,9 +196,14 @@ const rejoinSession = async (userId: string, sessionId: string) => {
   });
 };
 
+const canReturn = async (userId: string) => {
+  return SessionCacheRegistry.hasUser(userId);
+};
+
 export const SessionService = {
   initializeSession,
   handleDisconnect,
   endSession,
   rejoinSession,
+  canReturn,
 };
