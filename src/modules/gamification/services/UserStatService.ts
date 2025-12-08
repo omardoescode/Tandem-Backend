@@ -33,50 +33,23 @@ const updateStatWithEndedSession = async (sessionId: string) => {
   );
 
   userStats.forEach((us, i) => {
-    const p = participants[i]!.getCommittedState();
+    const p = participants[i]!;
     const reviewee_report = reports.find(
-      (x) => x.get("revieweeId") === p.userId,
+      (x) => x.get("revieweeId") === p.get("userId"),
     );
     if (!reviewee_report) {
       logger.error(
-        `There's no report for ${p.userId}. Consider the logs and handle this semantic error`,
+        `There's no report for ${p.get("userId")}. Consider the logs and handle this semantic error`,
       );
       return;
     }
-    const worked = reviewee_report.get("workProved");
 
-    logger.info(`Updating User Stats for ${p.userId}`);
-    us.add("totalSessionCount", 1);
-
-    if (p.state === "disconnected") us.add("disConnectedSessionCount", 1);
-
-    if (worked) {
-      us.add("totalFocusMinutes", Math.floor(p.focusTimeSeconds / 60));
-      us.add("totalBreakMinutes", Math.floor(p.breakTimeSeconds / 60));
-
-      const new_xp = LevelService.calcSessionXp(
-        p.focusTimeSeconds,
-        p.breakTimeSeconds,
-      );
-      const { level, xpInLevel, xpToNext } = LevelService.handleXpGain(
-        us.get("level"),
-        us.get("currentXP"),
-        new_xp,
-      );
-      us.set("level", level);
-      us.set("currentXP", xpInLevel);
-      us.set("tillNextLevelXP", xpToNext);
-
-      const addedCoins = StoreService.calcSessionCoin(
-        p.focusTimeSeconds,
-        p.breakTimeSeconds,
-      );
-      us.add("currentCoins", addedCoins);
-    }
+    us.applySessionEffect(p, reviewee_report.get("workProved"));
   });
 
   await UserStatsRepository.save(...userStats);
 };
+
 const getStatData = async (userId: string): Promise<UserStatsData | null> => {
   const stat = await UserStatsRepository.get(userId);
   return stat ? stat.getCommittedState() : null;

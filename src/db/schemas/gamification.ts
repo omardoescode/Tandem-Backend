@@ -1,4 +1,5 @@
 import {
+  boolean,
   integer,
   pgEnum,
   pgTable,
@@ -68,6 +69,8 @@ export const StoreItemTable = pgTable("store_item", {
   name: text("name").notNull(),
   description: text("description"),
   price: integer("price").notNull(),
+  available: boolean("available").notNull().default(false),
+  autoUse: boolean("available").notNull(),
 });
 
 export const PurchaseTable = pgTable("purchase", {

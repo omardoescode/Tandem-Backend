@@ -1,11 +1,15 @@
 import { db } from "@/db";
-import { TandemSessionTable } from "@/db/schemas/session";
+import {
+  SessionParticipantTable,
+  TandemSessionTable,
+} from "@/db/schemas/session";
 import { Session } from "../entities/Session";
-import { eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import logger from "@/lib/logger";
 
 export interface ISessionRepository {
   getBySessionId(sessionId: string): Promise<Session | null>;
+  getLastDisconnectedSession(userId: string): Promise<Session | null>;
   save(...sessions: Session[]): Promise<void>;
 }
 
@@ -51,5 +55,39 @@ export const SessionRepository: ISessionRepository = {
         session.commit();
       }),
     );
+  },
+  async getLastDisconnectedSession(userId: string): Promise<Session | null> {
+    const result = await db
+      .select({
+        sessionId: TandemSessionTable.sessionId,
+        state: TandemSessionTable.state,
+        startTime: TandemSessionTable.startTime,
+        scheduledDuration: TandemSessionTable.scheduledDuration,
+      })
+      .from(SessionParticipantTable)
+      .innerJoin(
+        TandemSessionTable,
+        eq(SessionParticipantTable.sessionId, TandemSessionTable.sessionId),
+      )
+      .where(
+        and(
+          eq(SessionParticipantTable.userId, userId),
+          eq(SessionParticipantTable.state, "disconnected"),
+        ),
+      )
+      .orderBy(desc(TandemSessionTable.startTime))
+      .limit(1);
+
+    if (result.length === 0) return null;
+
+    // drizzle result comes as: { session_participant: {...}, tandem_session: {...} }
+    const row = result[0]!;
+
+    return new Session({
+      sessionId: row.sessionId,
+      state: row.state,
+      startTime: row.startTime,
+      scheduledDuration: row.scheduledDuration,
+    });
   },
 };

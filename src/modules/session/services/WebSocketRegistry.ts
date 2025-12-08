@@ -29,7 +29,7 @@ export const WebSocketRegistry = {
   disconnectSocket: async (userId: string, ws_id: string): Promise<boolean> => {
     const sockets = socket_registry.get(userId);
     if (!sockets) return false;
-    const found = sockets.delete(ws_id);
+    sockets.delete(ws_id);
     if (sockets.size == 0) {
       SessionService.handleDisconnect(userId);
       socket_registry.delete(userId);
