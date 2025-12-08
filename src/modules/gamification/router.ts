@@ -12,6 +12,7 @@ gamificationRouter.get(
   "achievements",
   describeRoute({
     description: "Get all available achievements data",
+    tags: ["Achievements"],
   }),
   async (c) => {
     const r = await AchievementService.getAchievementsData();
@@ -24,6 +25,7 @@ gamificationRouter.get(
 
   describeRoute({
     description: "Get all user achievements",
+    tags: ["Achievements"],
   }),
   protectedRoute,
   async (c) => {
@@ -38,6 +40,7 @@ gamificationRouter.get(
   "my_stats",
   describeRoute({
     description: "Get User Stats",
+    tags: ["UserStats"],
   }),
   protectedRoute,
   async (c) => {

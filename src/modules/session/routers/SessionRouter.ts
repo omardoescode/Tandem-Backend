@@ -13,16 +13,25 @@ import { WSService } from "../services/WSService";
 
 const sessionRouter = new Hono();
 
-sessionRouter.get("ticket", protectedRoute, async (c) => {
-  const user = c.get("user");
-  const ticket = TicketService.addTicket(user.id);
-  return c.json(SuccessResponse({ ticket }));
-});
+sessionRouter.get(
+  "ticket",
+  describeRoute({
+    description: "Get a ticket to use for a tandem session",
+    tags: ["session"],
+  }),
+  protectedRoute,
+  async (c) => {
+    const user = c.get("user");
+    const ticket = TicketService.addTicket(user.id);
+    return c.json(SuccessResponse({ ticket }));
+  },
+);
 
 sessionRouter.get(
   "/ws",
   describeRoute({
     description: "The entire peer-matching, session, and checkin endpoint",
+    tags: ["session"],
   }),
   upgradeWebSocket(async (c) => {
     const ticket = c.req.query("ticket");

@@ -11,6 +11,7 @@ reportRouter.get(
   "",
   describeRoute({
     description: "Get all reports of the user",
+    tags: ["Checkin Reports"],
   }),
   protectedRoute,
   async (c) => {

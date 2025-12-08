@@ -14,6 +14,7 @@ taskRouter.get(
   "",
   describeRoute({
     description: "Get user tasks",
+    tags: ["Tasks"],
   }),
   protectedRoute,
   async (c) => {
@@ -29,6 +30,7 @@ taskRouter.put(
   "/:id/toggle",
   describeRoute({
     description: "Toggle a task completion status",
+    tags: ["Tasks"],
   }),
   protectedRoute,
   validator("param", z.object({ id: z.string().nonempty() })),
