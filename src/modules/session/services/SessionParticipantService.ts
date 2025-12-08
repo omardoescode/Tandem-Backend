@@ -7,7 +7,7 @@ import { SessionCacheRegistry } from "./SessionCacheRegistry";
 const disconnection_ms =
   env.SESSION_PARTICIPANT_DISCONNECTION_MAXIMUM_SECONDS * 1000;
 
-const disconnectionTimers = new Map<string, Timer>();
+const disconnectionTimers = new Map<string, NodeJS.Timeout>();
 
 export const SessionParticipantService = {
   createSessionParticipants: async (

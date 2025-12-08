@@ -14,7 +14,7 @@ import { SessionRepository } from "../repositories/SessionRepository";
 import { WebSocketRegistry } from "./WebSocketRegistry";
 import { SessionCacheRegistry } from "./SessionCacheRegistry";
 
-const checkinTimers = new Map<string, Timer>();
+const checkinTimers = new Map<string, NodeJS.Timeout>();
 
 function createCheckinTimer(sessionId: string, duration: string) {
   const duration_ms = moment.duration(duration).asMilliseconds();
