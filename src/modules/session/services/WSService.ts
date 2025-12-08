@@ -43,17 +43,24 @@ const handleMessage = async (message: SessionWsMessage, user: User) => {
       );
       return;
     case "checkin_report": {
-      const sessionId = SessionCacheRegistry.getUserSessionId(userId);
-      if (!sessionId) {
+      const session = SessionCacheRegistry.getUserSession(userId);
+      if (!session) {
         logger.warn(
           `Session entry not found in cache for User(userId=${userId})`,
         );
         return;
       }
 
+      if (session.state !== "checkin") {
+        logger.warn(
+          `Invalid message from user (userId=${userId}). Session not in checkin phase (sessionId=${session.sessionId})`,
+        );
+        return;
+      }
+
       const reviewerId = userId;
       await CheckinService.handleReport(
-        sessionId,
+        session.sessionId,
         reviewerId,
         message.reviewee_id,
         message.work_proved,
@@ -67,19 +74,26 @@ const handleMessage = async (message: SessionWsMessage, user: User) => {
       return;
     }
     case "checkin_message":
-      const sessionId = SessionCacheRegistry.getUserSessionId(userId);
-      if (!sessionId) {
+      const session = SessionCacheRegistry.getUserSession(userId);
+      if (!session) {
         logger.warn(
           `Session entry not found in cache for User(userId=${userId})`,
         );
         return;
       }
 
+      if (session.state !== "checkin") {
+        logger.warn(
+          `Invalid message from user (userId=${userId}). Session not in checkin phase (sessionId=${session.sessionId})`,
+        );
+        return;
+      }
+
       const session_participants =
-        await SessionParticipantRepository.getBySessionId(sessionId);
+        await SessionParticipantRepository.getBySessionId(session.sessionId);
 
       await CheckinService.sendMessage(
-        sessionId,
+        session.sessionId,
         message.last_ordering,
         message.content,
       );
