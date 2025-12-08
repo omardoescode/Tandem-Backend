@@ -4,6 +4,7 @@ import { UserStatsRepository } from "../repositories/UserStatsRepository";
 import { LevelService } from "./LevelService";
 import { StoreService } from "./StoreService";
 import { SessionRepository } from "@/modules/session/repositories/SessionRepository";
+import type { UserStatsData } from "../entities/UserStats";
 
 const updateStatWithEndedSession = async (sessionId: string) => {
   const session = await SessionRepository.getBySessionId(sessionId);
@@ -60,7 +61,12 @@ const updateStatWithEndedSession = async (sessionId: string) => {
 
   await UserStatsRepository.save(...userStats);
 };
+const getStatData = async (userId: string): Promise<UserStatsData | null> => {
+  const stat = await UserStatsRepository.get(userId);
+  return stat ? stat.getCommittedState() : null;
+};
 
 export const UserStatService = {
   updateStatWithEndedSession,
+  getStatData,
 };
