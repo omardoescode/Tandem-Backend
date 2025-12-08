@@ -36,8 +36,8 @@ const updateStatWithEndedSession = async (sessionId: string) => {
 
     if (p.state === "disconnected") us.add("disConnectedSessionCount", 1);
 
-    us.add("totalFocusMinutes", p.focusTimeSeconds);
-    us.add("totalBreakMinutes", p.breakTimeSeconds);
+    us.add("totalFocusMinutes", Math.floor(p.focusTimeSeconds / 60));
+    us.add("totalBreakMinutes", Math.floor(p.breakTimeSeconds / 60));
 
     const new_xp = LevelService.calcSessionXp(
       p.focusTimeSeconds,
