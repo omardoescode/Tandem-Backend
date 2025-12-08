@@ -6,7 +6,6 @@ import { PeerMatchingService } from "./PeerMatchingService";
 import { TaskService } from "./TaskService";
 import { logger } from "better-auth";
 import { CheckinService } from "./CheckinService";
-import { SessionParticipantRepository } from "../repositories/SessionParticipantRepository";
 import { SessionService } from "./SessionService";
 
 // Handle reconnection if any
@@ -41,6 +40,7 @@ const handleMessage = async (message: SessionWsMessage, user: User) => {
         message.is_complete,
       );
       return;
+    // TODO: Make sure that a user cannot checkin with themselves, and must checkin for a user that hasn't been checked in yet
     case "checkin_report": {
       const session = SessionCacheRegistry.getUserSession(userId);
       if (!session) {
@@ -65,11 +65,6 @@ const handleMessage = async (message: SessionWsMessage, user: User) => {
         message.work_proved,
       );
 
-      WebSocketRegistry.broadcast(message.reviewee_id, {
-        type: "checkin_report_sent",
-        work_proved: message.work_proved,
-      });
-
       return;
     }
     case "checkin_message":
@@ -88,24 +83,13 @@ const handleMessage = async (message: SessionWsMessage, user: User) => {
         return;
       }
 
-      const session_participants =
-        await SessionParticipantRepository.getBySessionId(session.sessionId);
-
       await CheckinService.sendMessage(
         session.sessionId,
+        userId,
         message.last_ordering,
         message.content,
       );
 
-      session_participants.forEach((u) => {
-        const recepientId = u.get("userId");
-        if (recepientId != userId)
-          WebSocketRegistry.broadcast(u.get("userId"), {
-            type: "checkin_partner_message",
-            content: message.content,
-            from: userId,
-          });
-      });
       return;
     case "self_checkin":
       {

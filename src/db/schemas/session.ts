@@ -102,6 +102,9 @@ export const CheckinMessageTable = pgTable("checkin_message", {
   sessionId: uuid("session_id")
     .notNull()
     .references(() => TandemSessionTable.sessionId, { onDelete: "cascade" }),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
   content: text("content"),
   imageUrl: text("image_url"),
   audioUrl: text("audio_url"),

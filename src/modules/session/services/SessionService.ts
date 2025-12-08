@@ -102,12 +102,6 @@ const handleDisconnect = async (userId: string) => {
 
   const session_cache = SessionCacheRegistry.getUserSession(userId);
   assert(session_cache);
-
-  if (!session_cache.participants.some((p) => p.connected)) {
-    session.disconnect();
-    await SessionRepository.save(session);
-    logger.info(`Session disconnected (sessionId=${session.get("sessionId")})`);
-  }
 };
 
 const endSession = async (sessionId: string, connected: boolean = true) => {

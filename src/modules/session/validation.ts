@@ -85,11 +85,14 @@ export const SessionWSResponseSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("checkin_report_sent"),
     work_proved: z.boolean(),
+    reviewer_id: z.string().nonempty(),
+    reviewee_id: z.string().nonempty(),
   }),
   z.object({
     type: z.literal("checkin_partner_message"),
     content: z.string().nonempty(),
     from: z.string().nonempty(),
+    lastOrdering: z.number().int().positive(),
   }),
   z.object({
     type: z.literal("disconnected_permanantly"),

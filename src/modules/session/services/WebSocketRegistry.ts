@@ -1,6 +1,7 @@
 import type { WSContext } from "hono/ws";
 import type { SessionWsResponse } from "../validation";
 import { SessionService } from "./SessionService";
+import { SessionCacheRegistry } from "./SessionCacheRegistry";
 
 const socket_registry = new Map<string, Map<string, WSContext>>();
 
@@ -51,5 +52,36 @@ export const WebSocketRegistry = {
     const stringified = JSON.stringify(message);
     sockets.values().forEach((ws) => ws.send(stringified));
     return true;
+  },
+  broadcastToSession: async (sessionId: string, message: SessionWsResponse) => {
+    const session = SessionCacheRegistry.getSession(sessionId);
+    if (!session) {
+      return;
+    }
+
+    const stringified_message = JSON.stringify(message);
+    session.participants
+      .filter((p) => p.connected)
+      .forEach((p) => {
+        const sockets = socket_registry.get(p.id);
+        if (!sockets) return;
+        sockets.values().forEach((ws) => ws.send(stringified_message));
+      });
+  },
+
+  broadcastToOthers: async (userId: string, message: SessionWsResponse) => {
+    const session = SessionCacheRegistry.getUserSession(userId);
+    if (!session) {
+      return;
+    }
+
+    const stringified_message = JSON.stringify(message);
+    session.participants
+      .filter((p) => p.connected && p.id != userId)
+      .forEach((p) => {
+        const sockets = socket_registry.get(p.id);
+        if (!sockets) return;
+        sockets.values().forEach((ws) => ws.send(stringified_message));
+      });
   },
 };

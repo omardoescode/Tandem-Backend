@@ -137,6 +137,7 @@ describe("Session Complete Test", () => {
         type: "checkin_partner_message",
         content: msg,
         from: users[0]?.id,
+        lastOrdering: 0,
       });
       user1_messages.shift();
 
@@ -170,6 +171,8 @@ describe("Session Complete Test", () => {
       expect(user1_messages[0]).toEqual({
         type: "checkin_report_sent",
         work_proved: true,
+        reviewer_id: users[0]?.id,
+        reviewee_id: users[1]?.id,
       } as SessionWsResponse);
       user1_messages.shift();
 

@@ -8,7 +8,6 @@ import { CheckinMessage } from "../entities/CheckinMessage";
 import { CheckinMessageRepository } from "../repositories/CheckinMessageRepository";
 import moment from "moment";
 import { SessionService } from "./SessionService";
-import { SessionParticipantRepository } from "../repositories/SessionParticipantRepository";
 import logger from "@/lib/logger";
 import { SessionRepository } from "../repositories/SessionRepository";
 import { WebSocketRegistry } from "./WebSocketRegistry";
@@ -26,7 +25,6 @@ function createCheckinTimer(sessionId: string, duration: string) {
   checkinTimers.set(sessionId, timer);
 }
 
-// TODO: In case of starting a checkin with only one user, auto generate a checkin report with user as reviewer and reviewee (self-checkin). Only consider if the other gets disconnected before giving a report
 async function startCheckin(sessionId: string) {
   logger.info(`Beginning Checkin for session (sessionId=${sessionId})`);
 
@@ -41,16 +39,9 @@ async function startCheckin(sessionId: string) {
   session.startCheckin();
   await SessionRepository.save(session);
 
-  const participants =
-    await SessionParticipantRepository.getBySessionId(sessionId);
-
   SessionCacheRegistry.moveToCheckin(sessionId);
 
-  participants.forEach((p) => {
-    WebSocketRegistry.broadcast(p.get("userId"), {
-      type: "checkin_start",
-    });
-  });
+  WebSocketRegistry.broadcastToSession(sessionId, { type: "checkin_start" });
 }
 
 async function handleReport(
@@ -73,6 +64,14 @@ async function handleReport(
   await CheckinReportRepository.save(report);
 
   SessionCacheRegistry.report(from);
+
+  WebSocketRegistry.broadcastToOthers(from, {
+    type: "checkin_report_sent",
+    work_proved: workProved,
+    reviewer_id: from,
+    reviewee_id: to,
+  });
+
   await testSessionOver(sessionId);
 }
 
@@ -89,15 +88,24 @@ async function testSessionOver(sessionId: string) {
 // TODO: Handle image upload and audio upload too
 async function sendMessage(
   sessionId: string,
+  userId: string,
   lastOrdering: number,
   content: string,
 ) {
   const messageId = v7();
   const msg = new CheckinMessage(
-    { messageId, sessionId, content, orderingSeq: lastOrdering + 1 },
+    { messageId, userId, sessionId, content, orderingSeq: lastOrdering + 1 },
     { initiallyDirty: true },
   );
+
   await CheckinMessageRepository.save(msg);
+
+  WebSocketRegistry.broadcastToSession(sessionId, {
+    type: "checkin_partner_message",
+    content: content,
+    from: userId,
+    lastOrdering,
+  });
 }
 
 async function getRevieweeReportsData(

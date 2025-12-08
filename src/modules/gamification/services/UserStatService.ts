@@ -43,40 +43,36 @@ const updateStatWithEndedSession = async (sessionId: string) => {
       );
       return;
     }
-    const worked_factor = reviewee_report.get("workProved") ? 1 : 0;
+    const worked = reviewee_report.get("workProved");
 
     logger.info(`Updating User Stats for ${p.userId}`);
     us.add("totalSessionCount", 1);
 
     if (p.state === "disconnected") us.add("disConnectedSessionCount", 1);
 
-    us.add(
-      "totalFocusMinutes",
-      worked_factor * Math.floor(p.focusTimeSeconds / 60),
-    );
-    us.add(
-      "totalBreakMinutes",
-      worked_factor * Math.floor(p.breakTimeSeconds / 60),
-    );
+    if (worked) {
+      us.add("totalFocusMinutes", Math.floor(p.focusTimeSeconds / 60));
+      us.add("totalBreakMinutes", Math.floor(p.breakTimeSeconds / 60));
 
-    const new_xp = LevelService.calcSessionXp(
-      p.focusTimeSeconds,
-      p.breakTimeSeconds,
-    );
-    const { level, xpInLevel, xpToNext } = LevelService.handleXpGain(
-      us.get("level"),
-      us.get("currentXP"),
-      new_xp,
-    );
-    us.set("level", worked_factor * level);
-    us.set("currentXP", worked_factor * xpInLevel);
-    us.set("tillNextLevelXP", worked_factor * xpToNext);
+      const new_xp = LevelService.calcSessionXp(
+        p.focusTimeSeconds,
+        p.breakTimeSeconds,
+      );
+      const { level, xpInLevel, xpToNext } = LevelService.handleXpGain(
+        us.get("level"),
+        us.get("currentXP"),
+        new_xp,
+      );
+      us.set("level", level);
+      us.set("currentXP", xpInLevel);
+      us.set("tillNextLevelXP", xpToNext);
 
-    const addedCoins = StoreService.calcSessionCoin(
-      p.focusTimeSeconds,
-      p.breakTimeSeconds,
-    );
-    us.add("currentCoins", worked_factor * addedCoins);
+      const addedCoins = StoreService.calcSessionCoin(
+        p.focusTimeSeconds,
+        p.breakTimeSeconds,
+      );
+      us.add("currentCoins", addedCoins);
+    }
   });
 
   await UserStatsRepository.save(...userStats);
