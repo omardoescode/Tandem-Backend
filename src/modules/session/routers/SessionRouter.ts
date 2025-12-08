@@ -93,7 +93,7 @@ sessionRouter.get(
         WSService.handleMessage(parsed, user);
       },
       async onClose() {
-        WebSocketRegistry.disconnectSocket(userId, ws_id);
+        await WSService.handleDisconnect(userId, ws_id);
       },
       onError(event, _) {
         console.error(`WebSocket error for ${userId}:`, event);

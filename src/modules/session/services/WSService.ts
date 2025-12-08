@@ -9,7 +9,7 @@ import { CheckinService } from "./CheckinService";
 import { SessionService } from "./SessionService";
 
 // Handle reconnection if any
-const handleReconnct = async (user: User) => {
+const handleReconnect = async (user: User) => {
   const userId = user.get("id");
   const session = SessionCacheRegistry.getUserSession(userId);
   if (!session) return;
@@ -114,4 +114,14 @@ const handleMessage = async (message: SessionWsMessage, user: User) => {
 
   throw new Error("Unimplemented");
 };
-export const WSService = { handleMessage, handleReconnect: handleReconnct };
+
+const handleDisconnect = async (userId: string, ws_id: string) => {
+  const entirelydisconnected = await WebSocketRegistry.disconnectSocket(
+    userId,
+    ws_id,
+  );
+  if (!entirelydisconnected) return;
+
+  await SessionService.handleDisconnect(userId);
+};
+export const WSService = { handleMessage, handleReconnect, handleDisconnect };

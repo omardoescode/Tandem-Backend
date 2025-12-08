@@ -15,7 +15,6 @@ export const WebSocketRegistry = {
 
     if (existing) {
       existing.set(ws_id, ws);
-      // TODO: Keep up to date
     } else {
       existing = new Map();
       existing.set(ws_id, ws);
@@ -23,6 +22,10 @@ export const WebSocketRegistry = {
     socket_registry.set(userId, existing);
   },
 
+  /**
+   * Handle the removal of a participant
+   * @returns true if the user has been disconnected entirely
+   */
   disconnectSocket: async (userId: string, ws_id: string): Promise<boolean> => {
     const sockets = socket_registry.get(userId);
     if (!sockets) return false;
@@ -30,8 +33,9 @@ export const WebSocketRegistry = {
     if (sockets.size == 0) {
       SessionService.handleDisconnect(userId);
       socket_registry.delete(userId);
+      return true;
     }
-    return found;
+    return false;
   },
 
   endUserConnection: async (userId: string) => {

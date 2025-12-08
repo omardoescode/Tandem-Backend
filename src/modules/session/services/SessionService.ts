@@ -98,10 +98,11 @@ const handleDisconnect = async (userId: string) => {
   if (sessionState === "finished") return;
 
   await SessionParticipantService.handleDisconnect(session, userId);
-  // TODO: Inform other participants that the user has disconnected??
 
-  const session_cache = SessionCacheRegistry.getUserSession(userId);
-  assert(session_cache);
+  await WebSocketRegistry.broadcastToSession(sessionId, {
+    type: "other_user_disconnected",
+    userId,
+  });
 };
 
 const endSession = async (sessionId: string, connected: boolean = true) => {
@@ -176,13 +177,19 @@ const rejoinSession = async (userId: string, sessionId: string) => {
       ? moment(startTime).add(moment.duration(scheduledDuration)).toISOString()
       : undefined;
 
-  WebSocketRegistry.broadcast(userId, {
+  await WebSocketRegistry.broadcast(userId, {
     type: "session_data",
     session_status: sessionStatus,
     time_left: timeLeft,
     partners,
     tasks: userTasks,
     start_time: startTime.toISOString(),
+  });
+
+  await WebSocketRegistry.broadcastToOthers(userId, {
+    type: "other_user_reconnected",
+    userId: userId,
+    tasks: userTasks.map((t) => t.title),
   });
 };
 

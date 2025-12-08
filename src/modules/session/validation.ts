@@ -55,9 +55,9 @@ export const SessionWSResponseSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("matching_pending"),
   }),
-  // TODO: send these messages
   z.object({
     type: z.literal("other_user_disconnected"),
+    userId: z.string().nonempty(),
   }),
   z.object({
     type: z.literal("other_user_reconnected"),
