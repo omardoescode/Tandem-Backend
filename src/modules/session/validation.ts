@@ -36,6 +36,9 @@ export const SessionWSMessageSchema = z.discriminatedUnion("type", [
     content: z.string().nonempty(),
     last_ordering: z.number().int().positive().optional().default(0),
   }),
+  z.object({
+    type: z.literal("self_checkin"),
+  }),
 ]);
 
 export type SessionWsMessage = z.infer<typeof SessionWSMessageSchema>;
@@ -52,8 +55,14 @@ export const SessionWSResponseSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("matching_pending"),
   }),
+  // TODO: send these messages
   z.object({
-    type: z.literal("other_used_disconnected"),
+    type: z.literal("other_user_disconnected"),
+  }),
+  z.object({
+    type: z.literal("other_user_reconnected"),
+    userId: z.string().nonempty(),
+    tasks: z.array(z.string().nonempty()).min(1),
   }),
   z.object({
     type: z.literal("start_session"),
@@ -106,6 +115,8 @@ export const SessionWSResponseSchema = z.discriminatedUnion("type", [
     start_time: z.iso.date(),
   }),
   z.object({ type: z.literal("already_in_session") }),
+  z.object({ type: z.literal("self_checkin_refused") }),
+  z.object({ type: z.literal("self_checkin_done") }),
 ]);
 
 export type SessionWsResponse = z.infer<typeof SessionWSResponseSchema>;

@@ -18,7 +18,6 @@ taskRouter.get(
   }),
   protectedRoute,
   async (c) => {
-    // NOTE: Should we consider checking for the task id belonging to this user
     const { id: userId } = c.get("user");
 
     const tasks = await TaskService.getTasksData(userId);

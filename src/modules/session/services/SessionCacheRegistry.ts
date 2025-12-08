@@ -108,7 +108,6 @@ export const SessionCacheRegistry = {
     return true;
   },
 
-  // TODO: Use this on re-entry  to a session again
   setParticipantConnection(userId: string, connected: boolean) {
     const participant = getParticipantCache(userId);
     if (!participant) {
@@ -119,7 +118,6 @@ export const SessionCacheRegistry = {
     participant.connected = connected;
   },
 
-  // TODO: Figure out where to use this method?? [Is this a method or a function??]
   report(userId: string) {
     const participant = getParticipantCache(userId);
     if (!participant) {

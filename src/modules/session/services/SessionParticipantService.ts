@@ -62,6 +62,10 @@ export const SessionParticipantService = {
     disconnectionTimers.set(userId, timer);
   },
   reconnect(userId: string): boolean {
-    return disconnectionTimers.delete(userId);
+    const disconnected = disconnectionTimers.delete(userId);
+    if (disconnected) {
+      SessionCacheRegistry.setParticipantConnection(userId, true);
+    }
+    return disconnected;
   },
 };

@@ -1,9 +1,9 @@
 class TicketManager {
-  private tickets: Map<string, [string, NodeJS.Timeout]> = new Map();
+  private tickets: Map<string, [string, NodeJS.Timeout | null]> = new Map();
 
   constructor() {
-    // this.tickets.set("0", "8gapCqLe4Ll1FlW6fSq1YSVT4FoAGrZW");
-    // this.tickets.set("1", "XczPuGGIiXElMDZKgrrtc4D5j2lzwTCL");
+    this.tickets.set("0", ["lJxDlQBeezRZsGPvSPvzafBC07PuLzvt", null]);
+    this.tickets.set("1", ["VZYFafEecXby01sFuXBhnJGbKZ8qU76T", null]);
   }
 
   public addTicket(userId: string): string {
@@ -22,7 +22,7 @@ class TicketManager {
     const res = this.tickets.get(ticketId);
     if (!res) return false;
     const [userId, timer] = res;
-    clearTimeout(timer);
+    if (timer) clearTimeout(timer);
     this.tickets.delete(ticketId);
     return userId;
   }

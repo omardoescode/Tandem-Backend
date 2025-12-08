@@ -110,9 +110,36 @@ async function getRevieweeReportsData(
   });
 }
 
+async function selfCheckin(sessionId: string, userId: string) {
+  const session = SessionCacheRegistry.getSession(sessionId);
+  if (!session) return;
+
+  if (session.participants.filter((x) => x.connected).length !== 1) {
+    WebSocketRegistry.broadcast(userId, { type: "self_checkin_refused" });
+    return;
+  }
+
+  const report = new CheckinReport(
+    {
+      sessionId,
+      reportId: v7(),
+      revieweeId: userId,
+      reviewerId: userId,
+      workProved: true,
+    },
+    { initiallyDirty: true },
+  );
+  await CheckinReportRepository.save(report);
+
+  WebSocketRegistry.broadcast(userId, { type: "self_checkin_done" });
+  await SessionService.endSession(sessionId);
+  return;
+}
+
 export const CheckinService = {
   handleReport,
   sendMessage,
   createCheckinTimer,
   getRevieweeReportsData,
+  selfCheckin,
 };

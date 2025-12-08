@@ -18,7 +18,6 @@ const handleReconnct = async (user: User) => {
   await SessionService.rejoinSession(userId, session.sessionId);
 };
 
-// TODO: Check for expected session state before proceeding, or for existence of session
 const handleMessage = async (message: SessionWsMessage, user: User) => {
   const userId = user.get("id");
   switch (message.type) {
@@ -107,6 +106,25 @@ const handleMessage = async (message: SessionWsMessage, user: User) => {
             from: userId,
           });
       });
+      return;
+    case "self_checkin":
+      {
+        const session = SessionCacheRegistry.getUserSession(userId);
+        if (!session) {
+          logger.warn(
+            `Session entry not found in cache for User(userId=${userId})`,
+          );
+          return;
+        }
+
+        if (session.state !== "checkin") {
+          logger.warn(
+            `Invalid message from user (userId=${userId}). Session not in checkin phase (sessionId=${session.sessionId})`,
+          );
+          return;
+        }
+        await CheckinService.selfCheckin(session.sessionId, userId);
+      }
       return;
   }
 
