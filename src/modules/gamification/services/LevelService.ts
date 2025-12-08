@@ -49,7 +49,7 @@ export const LevelService = {
     return {
       level,
       xpInLevel: totalXp - accumulated,
-      xpToNext: this.xpForLevel(level + 1),
+      xpToNext: this.xpForLevel(level + 1) - (totalXp - accumulated),
     };
   },
 

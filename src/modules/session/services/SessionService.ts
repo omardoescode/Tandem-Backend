@@ -107,11 +107,6 @@ const handleDisconnect = async (userId: string) => {
     session.disconnect();
     await SessionRepository.save(session);
     logger.info(`Session disconnected (sessionId=${session.get("sessionId")})`);
-
-    // TODO: Save this also in cache with a timer for a duration equal to user disconnection duration. If not re-connected, go back to its former state, if not, go back
-    // TODO: Consider the case if a session is disconnected, but a checkin timer still exists
-    // NOTE: I think the solution is omitting disconnection out of the state to make it a linear process
-    // TODO: If fully disconnected, apply UserStats.updateStatWithEndedSession
   }
 };
 
@@ -148,7 +143,8 @@ const endSession = async (sessionId: string, connected: boolean = true) => {
 };
 
 const rejoinSession = async (userId: string, sessionId: string) => {
-  SessionParticipantService.reconnect(userId);
+  const reconnected = SessionParticipantService.reconnect(userId);
+  if (!reconnected) return;
   const session = await SessionRepository.getBySessionId(sessionId);
   if (!session) {
     logger.warn(
