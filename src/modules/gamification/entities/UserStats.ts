@@ -58,5 +58,6 @@ export class UserStats extends Entity<UserStatsData> {
         p.breakTimeSeconds,
       );
       this.add("currentCoins", addedCoins);
+    }
   }
 }
