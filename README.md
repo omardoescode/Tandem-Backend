@@ -1,13 +1,16 @@
-# Tandem Backend
+# tandem
 
-## Development
+To install dependencies:
 
-1. Setup the database
-
-```sh
-docker compose up
-npx @better-auth/cli@latest migrate --config src/auth/lib.ts -- Run the auth schemas
+```bash
+bun install
 ```
 
+To run:
 
+```bash
+bun run index.ts
+```
 
+This project was created using `bun init` in bun v1.3.1. [Bun](https://bun.com)
+is a fast all-in-one JavaScript runtime.

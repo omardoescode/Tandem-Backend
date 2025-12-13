@@ -1,0 +1,7 @@
+{
+  "xpBase": 300,
+  "multiplier": 1.25,
+  "maxLevel": 100,
+  "xpPerFocusSecond": 1,
+  "xpPerBreakSecond": 0.25
+}

@@ -1,0 +1,4 @@
+1. Create an class for a user connection
+2. Create an class for a session
+3. Save session and user info to a database
+4. Make it such that matching is based on both language and duration

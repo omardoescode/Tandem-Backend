@@ -1,0 +1,32 @@
+[
+  {
+    "achievementId": "first_session",
+    "name": "First Tandem Session",
+    "description": "Complete your very first tandem session."
+  },
+  {
+    "achievementId": "five_sessions",
+    "name": "Session Enthusiast",
+    "description": "Complete 5 tandem sessions."
+  },
+  {
+    "achievementId": "ten_sessions",
+    "name": "Dedicated User",
+    "description": "Complete 10 tandem sessions."
+  },
+  {
+    "achievementId": "first_purchase",
+    "name": "Shopper",
+    "description": "Purchase your first store item."
+  },
+  {
+    "achievementId": "hundred_coins",
+    "name": "Coin Collector",
+    "description": "Accumulate 100 coins in total."
+  },
+  {
+    "achievementId": "focus_master",
+    "name": "Focus Master",
+    "description": "Reach 1000 minutes of total focus time."
+  }
+]

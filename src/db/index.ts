@@ -1,12 +1,6 @@
 import env from "@/utils/env";
-import { Pool } from "pg";
+import { drizzle } from "drizzle-orm/node-postgres";
 
-const db = new Pool({
-  host: env.POSTGRES_HOST,
-  port: env.POSTGRES_PORT,
-  user: env.POSTGRES_USER,
-  password: env.POSTGRES_PASSWORD,
-  database: env.POSTGRES_DB,
-});
+export const connection_url = `postgres://${env.POSTGRES_USER}:${env.POSTGRES_PASSWORD}@${env.POSTGRES_HOST}:${env.POSTGRES_PORT}/${env.POSTGRES_DB}`;
 
-export default db;
+export const db = drizzle(connection_url);

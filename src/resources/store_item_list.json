@@ -1,0 +1,18 @@
+[
+  {
+    "itemId": "restore_last_unverified_session",
+    "name": "Restore Unverified Session",
+    "description": "Adds the focus and break metrics from one unverified session to your statistics.",
+    "price": 600,
+    "autoUse": false,
+    "available": true
+  },
+  {
+    "itemId": "unlock_forest_theme",
+    "name": "unlock",
+    "description": "Unlock the forest theme for the user",
+    "price": 200,
+    "autoUse": false,
+    "available": false
+  }
+]
