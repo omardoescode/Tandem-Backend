@@ -21,6 +21,7 @@ const envSchema = z.object({
   POSTGRES_PASSWORD: z.string(),
   POSTGRES_DB: z.string(),
   PORT: StringToNumberSchema.default(3000),
+  BETTER_AUTH_TRUSTED_ORIGINS: z.string().default("http://localhost:5000"),
 });
 
 const env = Object.freeze(envSchema.parse(process.env));

@@ -53,7 +53,7 @@ export const SessionParticipantService = {
         SessionCacheRegistry.getSession(session.get("sessionId"))?.participants
           .length == 0
       ) {
-        await SessionService.endSession(session.get("state"), false); // TODO:  add this parameter
+        await SessionService.endSession(session.get("sessionId"), false);
       }
       SessionCacheRegistry.disconnectParticipant(userId);
       disconnectionTimers.delete(userId);

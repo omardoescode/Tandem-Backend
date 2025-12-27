@@ -86,6 +86,9 @@ export const PeerMatchingService = {
 
     queue.splice(idx, 1);
     if (queue.length === 0) requests.delete(duration);
+    
+    // Clean up exists map so user can match again
+    exists.delete(userId);
 
     return true;
   },

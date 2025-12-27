@@ -105,6 +105,10 @@ export const SessionCacheRegistry = {
     const [removed] = session.participants.splice(index, 1);
 
     session.entirelyDisconnectedParticipants.push(removed!);
+    
+    // Remove from userToSessionCache so they can start a new match
+    userToSessionCache.delete(participantId);
+    
     return true;
   },
 
